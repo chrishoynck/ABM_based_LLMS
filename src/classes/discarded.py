@@ -137,3 +137,40 @@ def run_cascade_for_visuals(self, sL, sR):
                 steady_state_reached = False
         
         activated.append(round)
+
+# The scal-free Network generation functions 
+    def verify_scale_free_distribution(self, plot):
+        """
+        Check if the network exhibits scale-free characteristics
+        """
+        # Calculate node degrees
+        degrees = [len(node.node_connections) for node in self.all_nodes]
+        
+        # Compute log-log plot for degree distribution
+        degree_counts = {}
+        for degree in degrees:
+            degree_counts[degree] = degree_counts.get(degree, 0) + 1
+        
+        unique_degrees = list(degree_counts.keys())
+        frequencies = list(degree_counts.values())
+        
+        if plot:
+            plt.figure(figsize=(10, 6))
+            plt.loglog(unique_degrees, frequencies, 'bo')
+            plt.title('Degree Distribution (Log-Log Scale)')
+            plt.xlabel('Degree')
+            plt.ylabel('Frequency')
+            plt.show()
+
+        assert all(degree >= self.m for degree in self.degree_distribution.values()), (
+        f"Some nodes have degree less than m={self.m}. Check initialization logic."
+        )
+        
+        # Basic scale-free network indicators
+        assert max(degrees) > np.mean(degrees) * 2, "Network lacks high-degree nodes"
+        assert len([d for d in degrees if d > np.mean(degrees) * 2]) > 0, "No significant hub nodes"
+        print("Intializing a scale-free network with m:", self.m)
+        fit = Fit(degrees)
+        print(f"Power-law fit: alpha={fit.power_law.alpha}, KS={fit.power_law.KS()}")
+        assert fit.power_law.KS() < 0.5, f"Power-law fit is not significant; {fit.power_law.KS()}"
+        # assert fit.power_law.alpha < 7, f"Power-law exponent is too high; {fit.power_law.alpha}"

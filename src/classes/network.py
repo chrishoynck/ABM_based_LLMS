@@ -3,7 +3,7 @@ from src.classes.agent import Agent
 from scipy import stats
 import numpy as np
 import matplotlib.pyplot as plt
-from powerlaw import Fit
+# from powerlaw import Fit
 import bisect
 
 class _Network:
@@ -112,9 +112,9 @@ class _Network:
             elif agent.identity == 'D':
                 all_samplers_D.add(agent)
             else:
-                raise ValueError("node identity should be assigned")
+                raise ValueError("agent identity should be assigned")
             # assert agent.sampler_state == False, "at this point all samplers states should be false"
-            assert agent.activation_state == False, "at this point all nodes should be inactive"
+            assert agent.activation_state == False, "at this point all agents should be inactive"
             agent.sampler_state = True
         return (all_samplers_H, all_samplers_D)
 
@@ -133,25 +133,25 @@ class _Network:
         # self.network_adjustment(sL, sR)
 
         # Reset states for next round
-        for node in self.activated:
-            node.reset_activation_state()
-            
+        for agent in self.activated:
+            agent.reset_activation_state()
+
         self.activated = set()
         
 class RandomNetwork(_Network):
     """
-    This class represents a random network of nodes.
-    It inherits from the _Network class and initializes the network by connecting all nodes with a probability `p`.
+    This class represents a random network of agents.
+    It inherits from the _Network class and initializes the network by connecting all agents with a probability `p`.
     """
 
     def __init__(self, p=0.1, k=0, **kwargs):
         """
-        Initialize the network by connecting all nodes with a probability `p`.
+        Initialize the network by connecting all agents with a probability `p`.
         If `p` is very low, the network will resemble a regular network with fixed degree `k`.
         If `p` is high, it will resemble an Erdős–Rényi random network.
 
         Args:
-            p (float): The probability of connecting two nodes.
+            p (float): The probability of connecting two agents.
             k (int): The degree of the network.
         """
         super().__init__(**kwargs)
@@ -166,32 +166,32 @@ class RandomNetwork(_Network):
         """
         if self.k >0:
             print(f"A Wattz-Strogatz network is initialized with beta value {self.p} and regular network degree {self.k}, and correlation {self.correlation}")
-            # If degree `k` is provided, ensure each node has exactly `k` connections.
+            # If degree `k` is provided, ensure each agent has exactly `k` connections.
             # This creates a regular network first, and then we adjust using `p`.
-            for node1 in self.all_nodes:
-                available_nodes = self.all_nodes.copy()
-                # Create k regular connections for each node
-                # available_nodes = list(self.all_nodes - {node1})
-                available_nodes.remove(node1)
+            for agent1 in self.all_agents:
+                available_agents = self.all_agents.copy()
+                # Create k regular connections for each agent
+                # available_agents = list(self.all_agents - {agent1})
+                available_agents.remove(agent1)
                 for _ in range(self.k):
-                    node2 = self.rng.choice(available_nodes)
-                    self.add_connection(node1, node2)
-                    available_nodes.remove(node2)
+                    agent2 = self.rng.choice(available_agents)
+                    self.add_connection(agent1, agent2)
+                    available_agents.remove(agent2)
 
-            # Now use `p` to add random edges between any pair of nodes
-            for node1 in self.all_nodes:
-                for node2 in self.all_nodes:
-                    if node1 != node2 and (node2 not in node1.node_connections):
+            # Now use `p` to add random edges between any pair of agents
+            for agent1 in self.all_agents:
+                for agent2 in self.all_agents:
+                    if agent1 != agent2 and (agent2 not in agent1.agent_connections):
                         if self.rng.random() < self.p:
-                            self.add_connection(node1, node2)
+                            self.add_connection(agent1, agent2)
         else:
-            print(f'A random network is initialized with p: {self.p} and {len(self.all_nodes)} nodes and correlation {self.correlation}')
+            print(f'A random network is initialized with p: {self.p} and {len(self.all_agents)} agents and correlation {self.correlation}')
             # If no degree `k` is provided, fall back to the Erdős–Rényi model
-            for node1 in self.all_nodes:
-                for node2 in self.all_nodes:
-                    if node1 != node2 and (node2 not in node1.node_connections):
+            for agent1 in self.all_agents:
+                for agent2 in self.all_agents:
+                    if agent1 != agent2 and (agent2 not in agent1.agent_connections):
                         if self.rng.random() < self.p:
-                            self.add_connection(node1, node2)
+                            self.add_connection(agent1, agent2)
 
     def network_adjustment(self, sL, sR):
         """
@@ -205,15 +205,15 @@ class RandomNetwork(_Network):
         self.removed_edge = []
 
         if len(self.activated)>0:
-            # Select an active node involved in the cascade
+            # Select an active agent involved in the cascade
             # sort for reproducability purposes
-            active_node = self.rng.choice(list(sorted(self.activated, key=lambda x: x.ID)))
+            active_agent = self.rng.choice(list(sorted(self.activated, key=lambda x: x.ID)))
 
-            if ((active_node.identity == 'L' and sL <= active_node.response_threshold) or
-                (active_node.identity == 'R' and sR <= active_node.response_threshold)):
-                
+            if ((active_agent.identity == 'H' and sL <= active_agent.response_threshold) or
+                (active_agent.identity == 'D' and sR <= active_agent.response_threshold)):
+
                 # Break a tie with an active neighbor (use set for efficiency)
-                active_neighbors = [n for n in active_node.node_connections if n.activation_state]
+                active_neighbors = [n for n in active_agent.agent_connections if n.activation_state]
                 number_of_connections = len(self.connections)
 
                 # If active neighbors exist, remove an edge
@@ -222,39 +222,39 @@ class RandomNetwork(_Network):
                     self.alterations+=1
                     
                     # remove edge, sort active neighbors for reproducability
-                    break_node = self.rng.choice(sorted(active_neighbors, key=lambda x: x.ID))
-                    self.remove_connection(active_node, break_node)
-                    self.removed_edge.extend([active_node.ID, break_node.ID])
-                    
-                    # only if an edge is removed, add an extra adge. 
-                    # node1 = self.rng.choice(list(self.all_nodes))
-                    node1 = self.rng.choice(self.all_nodes)
-                    cant_be_picked = node1.node_connections.copy()
-                    cant_be_picked.add(node1)
-                    # node2 = self.rng.choice(List(self.all_nodes - cant_be_picked))
+                    break_agent = self.rng.choice(sorted(active_neighbors, key=lambda x: x.ID))
+                    self.remove_connection(active_agent, break_agent)
+                    self.removed_edge.extend([active_agent.ID, break_agent.ID])
 
-                    filtered_nodes = [node for node in self.all_nodes if node not in cant_be_picked]
-                    node2 = self.rng.choice(filtered_nodes)
-                    self.new_edge.extend([node1.ID, node2.ID])
+                    # only if an edge is removed, add an extra edge.
+                    # agent1 = self.rng.choice(list(self.all_agents))
+                    agent1 = self.rng.choice(self.all_agents)
+                    cant_be_picked = agent1.agent_connections.copy()
+                    cant_be_picked.add(agent1)
+                    # agent2 = self.rng.choice(List(self.all_agents - cant_be_picked))
+
+                    filtered_agents = [agent for agent in self.all_agents if agent not in cant_be_picked]
+                    agent2 = self.rng.choice(filtered_agents)
+                    self.new_edge.extend([agent1.ID, agent2.ID])
 
                     # add edge
-                    self.add_connection(node1, node2)
-                
+                    self.add_connection(agent1, agent2)
+
                 assert number_of_connections == len(self.connections), "invalid operation took place, new number of edges is different than old"
 
 
 class ScaleFreeNetwork(_Network):
     """
-    This class represents a scale-free network of nodes.
-    It inherits from the _Network class and initializes the network by connecting nodes in a scale-free manner.
+    This class represents a scale-free network of agents.
+    It inherits from the _Network class and initializes the network by connecting agents in a scale-free manner.
     """
     def __init__(self, m=2, plot=False, **kwargs):
         """
-        Initialize the network by connecting nodes in a scale-free manner.
-        The network is initialized with `m` connections for each new node.
+        Initialize the network by connecting agents in a scale-free manner.
+        The network is initialized with `m` connections for each new agent.
 
         Args:
-            m (int): The number of connections for each new node.
+            m (int): The number of connections for each new agent.
             plot (bool): Boolean flag to indicate whether to plot the degree distribution.
         """
         super().__init__(**kwargs)
@@ -266,10 +266,10 @@ class ScaleFreeNetwork(_Network):
 
         self.initialize_network()
 
-    def _pick_node_by_degree_global(self, forbidden=set(), max_tries=100):
+    def _pick_agent_by_degree_global(self, forbidden=set(), max_tries=100):
         """
-        Pick a node (not in 'forbidden') by sampling from self.cumulative_degree_list.
-        Returns the chosen node or None if we fail after max_tries.
+        Pick an agent (not in 'forbidden') by sampling from self.cumulative_degree_list.
+        Returns the chosen agent or None if we fail after max_tries.
         """
         assert len(self.cumulative_degree_list) == len(self.degree_distribution), (
             "Cumulative degree list and degree distribution lengths do not match."
@@ -279,60 +279,60 @@ class ScaleFreeNetwork(_Network):
         for _ in range(max_tries):
             target_sum = self.rng.random() * self.total_degree
     
-            # Use binary search to find the index of the selected node
+            # Use binary search to find the index of the selected agent
             idx = bisect.bisect_left(self.cumulative_degree_list, target_sum)
-            if idx >= len(self.all_nodes):
-                idx = len(self.all_nodes) - 1  # Safeguard against index overflow
+            if idx >= len(self.all_agents):
+                idx = len(self.all_agents) - 1  # Safeguard against index overflow
 
-            candidate = self.all_nodes[idx]
+            candidate = self.all_agents[idx]
             
             # Check if the candidate is not in the forbidden set
             if candidate not in forbidden:
                 return candidate
 
         # If we fail after max_tries, return None
-        assert candidate is None, "Failed to pick a node after max_tries."
+        assert candidate is None, "Failed to pick a agent after max_tries."
         return None
 
-    def add_connection(self, node1, node2):
+    def add_connection(self, agent1, agent2):
         """
-        Add an undirected connection between two nodes, updating:
+        Add an undirected connection between two agents, updating:
             - self.connections
             - self.degree_distribution
             - self.total_degree
             - self.cumulative_degree_list
         """
-        if node1 != node2 and (node1, node2) not in self.connections:
-            node1.add_edge(node2)
-            node2.add_edge(node1)
-            self.connections.add((node1, node2))
-            self.connections.add((node2, node1))
+        if agent1 != agent2 and (agent1, agent2) not in self.connections:
+            agent1.add_edge(agent2)
+            agent2.add_edge(agent1)
+            self.connections.add((agent1, agent2))
+            self.connections.add((agent2, agent1))
 
             # Update degree distribution
-            self.degree_distribution[node1] = self.degree_distribution.get(node1, 0) + 1
-            self.degree_distribution[node2] = self.degree_distribution.get(node2, 0) + 1
+            self.degree_distribution[agent1] = self.degree_distribution.get(agent1, 0) + 1
+            self.degree_distribution[agent2] = self.degree_distribution.get(agent2, 0) + 1
             self.total_degree += 2  # 2 'ends' of edges
 
             # Rebuild the cumulative sums for probability sampling
             self._rebuild_cumulative_list()
 
-    def remove_connection(self, node1, node2):
+    def remove_connection(self, agent1, agent2):
         """
-        Remove an undirected connection between two nodes (if it exists), updating:
+        Remove an undirected connection between two agents (if it exists), updating:
             - self.connections
             - self.degree_distribution
             - self.total_degree
             - self.cumulative_degree_list
         """
-        if node1 != node2 and (node1, node2) in self.connections:
-            node1.remove_edge(node2)
-            node2.remove_edge(node1)
-            self.connections.remove((node1, node2))
-            self.connections.remove((node2, node1))
+        if agent1 != agent2 and (agent1, agent2) in self.connections:
+            agent1.remove_edge(agent2)
+            agent2.remove_edge(agent1)
+            self.connections.remove((agent1, agent2))
+            self.connections.remove((agent2, agent1))
 
             # Update degree distribution
-            self.degree_distribution[node1] -= 1
-            self.degree_distribution[node2] -= 1
+            self.degree_distribution[agent1] -= 1
+            self.degree_distribution[agent2] -= 1
             self.total_degree -= 2
 
             self._rebuild_cumulative_list()
@@ -340,8 +340,8 @@ class ScaleFreeNetwork(_Network):
     def _rebuild_cumulative_list(self):
         """
         Rebuild 'cumulative_degree_list' from 'degree_distribution'.
-        cumulative_degree_list[i] = sum of degrees up to the i-th node in iteration order.
-        This is used for efficient probability-based node selection via bisect.
+        cumulative_degree_list[i] = sum of degrees up to the i-th agent in iteration order.
+        This is used for efficient probability-based agent selection via bisect.
         """
         self.cumulative_degree_list.clear()
         running_sum = 0
@@ -351,29 +351,23 @@ class ScaleFreeNetwork(_Network):
         
     def initialize_network(self):
         """
-        1) Select m initial nodes, fully connect them (seed network).
-        2) For each remaining node, connect it to m existing nodes with probability 
-        = (node_degree / total_degree) using _pick_node_by_degree_global().
+        1) Select m initial agents, fully connect them (seed network).
+        2) For each remaining agent, connect it to m existing agents with probability
+        = (agent_degree / total_degree) using _pick_agent_by_degree_global().
         3) Assertions ensure total_degree > 0 for valid probability-based sampling.
+        MAYBE REQUIRES WORK: some checks to ensure no agents gets stuck with degree < m
         """
         # Basic checks
-        n = len(self.all_nodes)
+        n = len(self.all_agents)
         assert self.m > 0, "m must be positive."
-        assert self.m < n, "Number of connections 'm' must be less than number of nodes."
+        assert self.m < n, "Number of connections 'm' must be less than number of agents."
 
-        # self.rng.shuffle(self.all_nodes)
-        # identities = ['L'] * len(self.nodesL) + ['R'] * len(self.nodesR)
-        # self.rng.shuffle(identities)
-        # for i, node in enumerate(self.all_nodes):
-        #     node.identity = identities[i]
-        
-        # Initialize degree_distribution to 0 for all nodes
-        for node in self.all_nodes:
-            self.degree_distribution[node] = 0
+        # Initialize degree_distribution to 0 for all agents
+        for agent in self.all_agents:
+            self.degree_distribution[agent] = 0
 
-        
-        # Step 1: Pick m initial nodes and fully connect them
-        m0_nodes = self.rng.choice(self.all_nodes, self.m, replace=False)  # Use self.rng.choice for reproducibility
+        # Step 1: Pick m initial agents and fully connect them
+        m0_agents = self.rng.choice(self.all_agents, self.m, replace=False)  # Use self.rng.choice for reproducibility
 
         m1 = int(self.m/2)
         if self.m %2 == 0:
@@ -382,146 +376,109 @@ class ScaleFreeNetwork(_Network):
             m2 = int(self.m/2) + 1
 
         # balanced out hubs
-        m0_nodes = np.concatenate([self.rng.choice(self.nodesR, m1, replace=False), self.rng.choice(self.nodesL, m2, replace=False)])
+        m0_agents = np.concatenate([self.rng.choice(self.agentsR, m1, replace=False), self.rng.choice(self.agentsL, m2, replace=False)])
 
-        if self.m > 1:  # Fully connect seed nodes only if m > 1
-            for i in range(len(m0_nodes)):
-                for j in range(i + 1, len(m0_nodes)):
-                    self.add_connection(m0_nodes[i], m0_nodes[j])
+        if self.m > 1:  # Fully connect seed agents only if m > 1
+            for i in range(len(m0_agents)):
+                for j in range(i + 1, len(m0_agents)):
+                    self.add_connection(m0_agents[i], m0_agents[j])
         else:  # Handle the case for m=1
-            # If m=1, connect the seed node to another random node
-            random_node = self.rng.choice([node for node in self.all_nodes if node not in m0_nodes])
-            self.add_connection(m0_nodes[0], random_node)
+            # If m=1, connect the seed agent to another random agent
+            random_agent = self.rng.choice([agent for agent in self.all_agents if agent not in m0_agents])
+            self.add_connection(m0_agents[0], random_agent)
 
         # Ensure cumulative degree list is rebuilt after seed network
         self._rebuild_cumulative_list()
 
         # Ensure total_degree is initialized properly
         assert self.total_degree > 0, "Seed network must have edges, so total_degree > 0."
-        
-        # can_be_picked = self.all_nodes.copy()
-        # node2 = self.rng.choice(List(self.all_nodes - cant_be_picked))
 
-        # Step 2: For the remaining nodes, attach each with m edges via scale-free selection
-        remaining_nodes = [node for node in self.all_nodes if node not in m0_nodes]
-        for new_node in remaining_nodes:
+        # Step 2: For the remaining agents, attach each with m edges via scale-free selection
+        remaining_agents = [agent for agent in self.all_agents if agent not in m0_agents]
+        for new_agent in remaining_agents:
             assert self.total_degree > 0, "Cannot do preferential attachment if total_degree = 0."
 
-            # Use a set to track which nodes have already been chosen
+            # Use a set to track which agents have already been chosen
             chosen = set()
-            forbidden = {new_node}  # Prevent self-loops
+            forbidden = {new_agent}  # Prevent self-loops
 
             while len(chosen) < self.m:
-                candidate = self._pick_node_by_degree_global(forbidden=forbidden, max_tries=500)
+                candidate = self._pick_agent_by_degree_global(forbidden=forbidden, max_tries=500)
                 chosen.add(candidate)
                 forbidden.add(candidate)  # Ensure unique connections
 
-            # Add edges to the chosen nodes
-            for target_node in chosen:
-                self.add_connection(new_node, target_node)
+            # Add edges to the chosen agents
+            for target_agent in chosen:
+                self.add_connection(new_agent, target_agent)
 
         assert all(degree >= self.m for degree in self.degree_distribution.values()), (
-            f"Some nodes have degree less than m={self.m}. Check initialization logic."
+            f"Some agents have degree less than m={self.m}. Check initialization logic."
         )
 
-        # Step 4: Verify the scale-free properties
-        self.verify_scale_free_distribution(self.plot)
+        # # Step 4: Verify the scale-free properties
+        # self.verify_scale_free_distribution(self.plot)
 
-    def verify_scale_free_distribution(self, plot):
-        """
-        Check if the network exhibits scale-free characteristics
-        """
-        # Calculate node degrees
-        degrees = [len(node.node_connections) for node in self.all_nodes]
-        
-        # Compute log-log plot for degree distribution
-        degree_counts = {}
-        for degree in degrees:
-            degree_counts[degree] = degree_counts.get(degree, 0) + 1
-        
-        unique_degrees = list(degree_counts.keys())
-        frequencies = list(degree_counts.values())
-        
-        if plot:
-            plt.figure(figsize=(10, 6))
-            plt.loglog(unique_degrees, frequencies, 'bo')
-            plt.title('Degree Distribution (Log-Log Scale)')
-            plt.xlabel('Degree')
-            plt.ylabel('Frequency')
-            plt.show()
 
-        assert all(degree >= self.m for degree in self.degree_distribution.values()), (
-        f"Some nodes have degree less than m={self.m}. Check initialization logic."
-        )
-        
-        # Basic scale-free network indicators
-        assert max(degrees) > np.mean(degrees) * 2, "Network lacks high-degree nodes"
-        assert len([d for d in degrees if d > np.mean(degrees) * 2]) > 0, "No significant hub nodes"
-        print("Intializing a scale-free network with m:", self.m)
-        fit = Fit(degrees)
-        print(f"Power-law fit: alpha={fit.power_law.alpha}, KS={fit.power_law.KS()}")
-        assert fit.power_law.KS() < 0.5, f"Power-law fit is not significant; {fit.power_law.KS()}"
-        # assert fit.power_law.alpha < 7, f"Power-law exponent is too high; {fit.power_law.alpha}"
 
     def network_adjustment(self, sL, sR):
         """
         Adjust the network by breaking ties and adding new connections in a scale-free manner.
         """
 
-        # Ensure there are activated nodes
+        # Ensure there are activated agents
         if len(self.activated) == 0:
             return
 
-        # Select a valid active node with more than m connections
-        active_nodes_list = list(sorted(self.activated, key=lambda x: x.ID))
-        active_node = self.rng.choice(active_nodes_list)
+        # Select a valid active agent with more than m connections
+        active_agents_list = list(sorted(self.activated, key=lambda x: x.ID))
+        active_agent = self.rng.choice(active_agents_list)
         retries = 100  # Limit retries to avoid infinite loops
-        
-        while len(active_node.node_connections) <= self.m and retries > 0:
-            active_node = self.rng.choice(active_nodes_list)
+
+        while len(active_agent.agent_connections) <= self.m and retries > 0:
+            active_agent = self.rng.choice(active_agents_list)
             retries -= 1
 
         if retries == 0:
             return
 
-        assert len(active_node.node_connections) > self.m, "Selected active node does not have enough connections."
+        assert len(active_agent.agent_connections) > self.m, "Selected active agent does not have enough connections."
 
-        # Check if the active node satisfies the conditions for breaking ties
+        # Check if the active agent satisfies the conditions for breaking ties
         if not (
-            (active_node.identity == 'L' and sL <= active_node.response_threshold)
-            or (active_node.identity == 'R' and sR <= active_node.response_threshold)
+            (active_agent.identity == 'H' and sL <= active_agent.response_threshold)
+            or (active_agent.identity == 'D' and sR <= active_agent.response_threshold)
         ):
-            return  # Skip adjustment if the active node does not meet conditions
+            return  # Skip adjustment if the active agent does not meet conditions
 
         # Identify active neighbors
-        active_neighbors = [n for n in active_node.node_connections if n.activation_state]
-        assert len(active_neighbors) > 0, f"Active node {active_node} has no active neighbors to break ties with."
+        active_neighbors = [n for n in active_agent.agent_connections if n.activation_state]
+        assert len(active_neighbors) > 0, f"Active agent {active_agent} has no active neighbors to break ties with."
         active_neighbors = sorted(active_neighbors, key=lambda x: x.ID)
         for _ in range(100):  
-            break_node = self.rng.choice(active_neighbors)
-            if len(break_node.node_connections) > self.m:
-                self.remove_connection(active_node, break_node)
+            break_agent = self.rng.choice(active_neighbors)
+            if len(break_agent.agent_connections) > self.m:
+                self.remove_connection(active_agent, break_agent)
                 break
         else:
             return 
 
         # Assert that the edge was removed successfully
-        assert len(active_node.node_connections) >= self.m, "Edge removal violated minimum degree constraint."
-        assert len(break_node.node_connections) >= self.m, "Edge removal violated minimum degree constraint."
+        assert len(active_agent.agent_connections) >= self.m, "Edge removal violated minimum degree constraint."
+        assert len(break_agent.agent_connections) >= self.m, "Edge removal violated minimum degree constraint."
 
         # Add a new edge according to scale-free properties
-        node1 = self.rng.choice(self.all_nodes)
-        assert node1 is not None, "Failed to pick a valid node1 for rewiring."
+        agent1 = self.rng.choice(self.all_agents)
+        assert agent1 is not None, "Failed to pick a valid agent1 for rewiring."
 
-        forbidden = set(node1.node_connections) | {node1, active_node}
-        node2 = self._pick_node_by_degree_global(forbidden=forbidden)
-        assert node2 is not None, "Failed to pick a valid node2 for rewiring."
+        forbidden = set(agent1.agent_connections) | {agent1, active_agent}
+        agent2 = self._pick_agent_by_degree_global(forbidden=forbidden)
+        assert agent2 is not None, "Failed to pick a valid agent2 for rewiring."
 
-        self.add_connection(node1, node2)
+        self.add_connection(agent1, agent2)
 
         self.alterations += 1
 
         # Ensure network integrity after adjustment
-        assert all(len(node.node_connections) >= self.m for node in [active_node, break_node, node1, node2]), (
+        assert all(len(agent.agent_connections) >= self.m for agent in [active_agent, break_agent, agent1, agent2]), (
             "Network adjustment violated the minimum degree constraint."
         )
