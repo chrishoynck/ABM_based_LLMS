@@ -47,7 +47,7 @@ class _Network:
         self.agentsD = [Agent(i, "D", rng=self.rng) for i in range(int(num_agents * starting_distribution))]
         self.agentsH = [Agent(i + len(self.agentsL), "H", rng=self.rng) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
-        self.all_agents = self.agentsL + self.agentsR
+        self.all_agents = self.agentsD + self.agentsH
     
     def clean_network(self):
         """
@@ -376,7 +376,7 @@ class ScaleFreeNetwork(_Network):
             m2 = int(self.m/2) + 1
 
         # balanced out hubs
-        m0_agents = np.concatenate([self.rng.choice(self.agentsR, m1, replace=False), self.rng.choice(self.agentsL, m2, replace=False)])
+        m0_agents = np.concatenate([self.rng.choice(self.agentsD, m1, replace=False), self.rng.choice(self.agentsH, m2, replace=False)])
 
         if self.m > 1:  # Fully connect seed agents only if m > 1
             for i in range(len(m0_agents)):

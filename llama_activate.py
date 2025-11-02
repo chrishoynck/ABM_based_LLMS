@@ -2,6 +2,7 @@
 from transformers import AutoTokenizer, BitsAndBytesConfig, pipeline
 import os, torch
 import sys
+from src.classes.agent import Agent
 
 
 ######################################################################
@@ -19,10 +20,16 @@ DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
 # interactive part
 SYSTEM_PROMPT = "You are a concise, helpful assistant."
-history = [{"role": "system", "content": SYSTEM_PROMPT}]
+
 
 # setyp initial llm
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR, use_fast=True)
+# Ensure a pad token exists (prevents fallback messages)
+if tokenizer.pad_token is None:
+    if tokenizer.eos_token is not None:
+        tokenizer.pad_token = tokenizer.eos_token
+    else:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
 pipe = pipeline(
     "text-generation",
@@ -36,14 +43,13 @@ pipe = pipeline(
     #     # enable if available; otherwise omit
     #     "attn_implementation": "flash_attention_2",
     # },
-    max_new_tokens=256,                       
+    max_new_tokens=256,
+    # temperature=0.0,
+    return_full_text=False,                        
 )
 
-# --- minimal interactive chat REPL (uses chat template + history) ---
 
-
-
-def chat_turn(user_msg: str) -> str:
+def chat_turn(history, user_msg: str) -> (str, list):
     # build messages with history + new user turn
     msgs = history + [{"role": "user", "content": user_msg}]
     prompt = tokenizer.apply_chat_template(
@@ -58,9 +64,9 @@ def chat_turn(user_msg: str) -> str:
     # append assistant reply to history
     history.append({"role": "user", "content": user_msg})
     history.append({"role": "assistant", "content": out})
-    return out
+    return out, history
 
-def repl():
+def repl(history=None):
     ''' 
     Conversational function with this llama model, 
     History of llama model is updated with each message.
@@ -80,7 +86,7 @@ def repl():
                 history[:] = [{"role": "system", "content": SYSTEM_PROMPT}]
                 print("(history reset)")
                 continue
-            reply = chat_turn(user)
+            reply, history = chat_turn(history, user)
             print(f"Assistant: {reply}")
         except (KeyboardInterrupt, EOFError):
             print("\nBye!")
@@ -100,8 +106,33 @@ def chat_once(user_msg: str) -> str:
     return out[len(prompt):].strip()
 
 if __name__ == "__main__":
-    print("starting converstations")
-    print("Raw continuation:", act_llama2("how high are trees?"))
-    print("Chat answer:", chat_once("How are you?"))
-    repl()
+    # history = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # print("starting converstations")
+    # print("Raw continuation:", act_llama2("how high are trees?"))
+    # print("Chat answer:", chat_once("How are you?"))
+    # repl(history)
 
+    # Make two agents A,B who follow each other
+    A = Agent(0, identity="H")
+    B = Agent(1, identity="D")
+    C = Agent(2, identity="N")
+    A.add_edge(B); B.add_edge(A)
+    A.add_edge(C); C.add_edge(A)
+    B.add_edge(C); C.add_edge(B)
+
+    # Seed: activate A to kick things off
+    A.activation_state = True
+    B.activation_state = False  
+    C.activation_state = False
+
+    for r in range(20):
+        for a in (A, B, C):
+            a.step_llm_tweet(tokenizer, pipe, round_idx=r)
+        for a in (A, B, C):
+            a.commit()
+        print(f"Round {r}: A_active={A.activation_state}, A_last={A.last_tweet} | "
+            f"B_active={B.activation_state}, B_last={B.last_tweet} | "
+            f"C_active={C.activation_state}, C_last={C.last_tweet}")
+    print("A tweet history:", A.tweethistory)
+    print("B tweet history:", B.tweethistory)
+    print("C tweet history:", C.tweethistory)

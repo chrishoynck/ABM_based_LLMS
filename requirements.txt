@@ -1,0 +1,9 @@
+﻿matplotlib==3.10.0
+matplotlib-inline==0.1.7
+networkx==3.4.2
+numpy==2.2.2
+pandas==2.2.3
+powerlaw==1.5
+scipy==1.15.1
+statsmodels==0.14.4
+pillow==11.1.0
