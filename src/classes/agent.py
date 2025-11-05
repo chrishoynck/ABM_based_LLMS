@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np, torch
 
 class Agent:
     """
@@ -29,11 +29,49 @@ class Agent:
 
         # Additional attributes for LLM interaction
         self.rng = rng if rng else np.random.default_rng()
+        self._base_seed = int(self.rng.integers(0, 2**31 - 1))
+        self._torch_gen = None  # will be created on first use
         self.tweethistory = []
         self.last_tweet: str | None = None
         self._next_activation_state = False 
+
+    # attempt to seed the whole thing -> did not work
+    def generate_with_gen_chat(self, prompt, pipe, temperature=0.8, top_p=0.95, max_new_tokens=256):
+        tok = pipe.tokenizer
+
+        # transform prompts into tensors
+        inputs = tok(prompt, return_tensors="pt")
+
+        # moves them to the correct device
+        inputs = {k: v.to(pipe.model.device) for k, v in inputs.items()}
+
+        out_ids = pipe.model.generate(
+            **inputs,
+            do_sample=True,
+            seeded=True,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            pad_token_id=tok.pad_token_id or tok.eos_token_id,
+            eos_token_id=tok.eos_token_id,
+            generation_config=None,  # ensure no conflicting config object
+        )
+
+        # only grab newly generated tokens
+        new_tokens = out_ids[0, inputs["input_ids"].shape[1]:]
+
+        # decode and return the generated text
+        return tok.decode(new_tokens, skip_special_tokens=True).strip()
     
-    def build_tweet_prompt(self, tokenizer, identity, round_idx, neighbor_pairs, max_chars=240):
+    # helper function to seed but did not work. 
+    def _ensure_torch_gen(self, llm_pipe):
+        """Create (or reuse) a persistent per-agent torch.Generator on the right device."""
+        dev = llm_pipe.model.device
+        if self._torch_gen is None or str(self._torch_gen.device) != str(dev):
+            self._torch_gen = torch.Generator(device=dev).manual_seed(self._base_seed)
+        return self._torch_gen
+    
+    def build_tweet_prompt(self, tokenizer, identity, round_idx, neighbor_pairs, max_chars=240, force_active=False):
         # neighbor_pairs: list of (neighbor_id, last_text)
 
         # own history block
@@ -48,10 +86,16 @@ class Agent:
             f"- Agent {nid}: {txt[:240]}" for nid, txt in neighbor_pairs
         )
 
+        if not force_active:
+            sup_text = "Decide whether to post a short new tweet (<= " f"{max_chars} chars)."
+        else:
+            sup_text = "You must post a short new tweet (<= " f"{max_chars} chars)."
+
         system = (
+            f"You are a social media user {identity}.\n"
            "You are given your recent tweets (in case you've already tweeted) and a short list of neighbor tweets (in case they have tweeted) (you can decide to randomly post).\n"
-            "Decide whether to post a short new tweet (<= " f"{max_chars} chars).\n"
-            "Only post your new tweet, don't be repetitive.\n"
+            f"{sup_text}\n"
+            "Only post your new tweet.\n"
             "REPLY FORMAT (exactly):\n"
             "If you want to tweet, reply with: TWEET: <your tweet text>\n"
             "If you don't want to tweet, reply with: NO_TWEET\n"
@@ -71,8 +115,10 @@ class Agent:
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+    
+    
 
-    def step_llm_tweet(self, tokenizer, llm_pipe, round_idx:int, max_chars = 240):
+    def step_llm_tweet(self, tokenizer, llm_pipe, round_idx:int, max_chars = 240, force_active=False):
         """
         Use the LLM to decide whether to tweet or not.
 
@@ -84,18 +130,34 @@ class Agent:
             bool: Whether the agent decided to tweet or not.
         """
         neighbor_msgs = []
+
+        
+
         activated, activated_neighbors = self.respond()
+        # if force_active:
+        #     activated = True
         if True:
             for n in activated_neighbors:
                 if n.activation_state and n.last_tweet:
                     neighbor_msgs.append((n.ID, n.last_tweet))
             neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
-
+        
         prompt = self.build_tweet_prompt(
-            tokenizer, self.identity, round_idx, neighbor_msgs, max_chars=max_chars
+            tokenizer, self.ID, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
         )
+        # #gen = self._ensure_torch_gen(llm_pipe)
+        # if gen is None:
+        #     raise ValueError("Torch generator not initialized properly.")
+        
+        out = llm_pipe(
+            prompt,
+            do_sample=True,
+            temperature=0.8,
+            top_p=0.95,
+            max_new_tokens=256,
+            # generator=gen,
+        )[0]["generated_text"].strip() 
 
-        out = llm_pipe(prompt)[0]["generated_text"]
         do_tweet, tweet = self.parse_tweet_decision(out)
         if do_tweet:
             tweet = tweet.strip()
@@ -118,7 +180,11 @@ class Agent:
     def parse_tweet_decision(self, text: str):
         t = text.strip()
         low = t.lower()
-        if "no_tweet" in low and "tweet:" not in low:
+
+        # all text that is not generated in proper format is treated as no tweet
+        if "no_tweet" in low:
+            return False, ""
+        if "tweet:" not in low:
             return False, ""
         # prefer the explicit "TWEET:" pattern
         idx = low.find("tweet:")
@@ -127,7 +193,7 @@ class Agent:
         # fallback: if any non-empty content, treat as tweet
         return (len(t) > 0), t
         
-    def respond(self, use_llm=False, llm_pipe=None) -> (bool, set):
+    def respond(self) -> (bool, set):
         """
         respond to the news intensity and returns False if the activation state did not change, True otherwise.
 
@@ -178,7 +244,9 @@ class Agent:
         """
         Reset the agent to its initial state.
         """
-        pass
+        self.activation_state = False
+        self.last_tweet = None
+        self.tweethistory = []
 
 
     def __hash__(self):

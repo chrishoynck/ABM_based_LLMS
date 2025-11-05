@@ -14,7 +14,7 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, mean=0, starting_distribution=0.5, seed=None):
+    def __init__(self, num_agents=200, mean=0, starting_distribution=0.5, directed=False, seed=None):
         """
         Initialize the network with a specified number of agents, mean, correlation, starting distribution, update fraction, and seed.
 
@@ -38,6 +38,7 @@ class _Network:
         self.iterations = 0
         self.mean = mean
         self.activated = set()
+        self.directed = directed
 
         self.rng = np.random.default_rng(seed)
 
@@ -45,10 +46,10 @@ class _Network:
         self.removed_edge = []
 
         self.agentsD = [Agent(i, "D", rng=self.rng) for i in range(int(num_agents * starting_distribution))]
-        self.agentsH = [Agent(i + len(self.agentsL), "H", rng=self.rng) for i in range(int(num_agents * (1 - starting_distribution)))]
+        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=self.rng) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
-    
+      
     def clean_network(self):
         """
         Clean the network by unactivating all agents.    
@@ -63,11 +64,14 @@ class _Network:
             agent1 (Agent): The first agent to connect.
             agent2 (Agent): The second agent to connect.
         """
+
         if agent1 != agent2: 
             agent1.add_edge(agent2)
-            agent2.add_edge(agent1)
+            if not self.directed:
+                agent2.add_edge(agent1)
             self.connections.add((agent1, agent2))
-            self.connections.add((agent2, agent1))
+            if not self.directed:
+                self.connections.add((agent2, agent1))
 
     def remove_connection(self, agent1, agent2):
         """
@@ -79,9 +83,11 @@ class _Network:
         """
         if agent1 != agent2:
             agent1.remove_edge(agent2)
-            agent2.remove_edge(agent1)
+            if not self.directed:
+                agent2.remove_edge(agent1)
             self.connections.remove((agent1, agent2))
-            self.connections.remove((agent2, agent1))
+            if not self.directed:
+                self.connections.remove((agent2, agent1))
 
     def generate_DSC_significance(self):
         """
@@ -94,49 +100,28 @@ class _Network:
         stims = self.rng.multivariate_normal(mean = [self.mean, self.mean], cov = covar, size = 1)
         stims_perc = stats.norm.cdf(stims, loc = 0, scale = 1) 
         return stims_perc[0][0], stims_perc[0][1]
-
     
-    def pick_samplers(self):
-        """
-        Pick samplers for the Depressed and Happy media hubs.
+    
 
-        Returns:
-            Tuple of sets of samplers for the depressed and happy media hubs.
-        """
-        
-        all_samplers_H, all_samplers_D = set(), set()
-        # for agent in self.rng.choice(list(self.all_agents), int(len(self.all_agents) * self.update_fraction), replace=False):
-        for agent in self.rng.choice(self.all_agents, int(len(self.all_agents) * self.update_fraction), replace=False):
-            if agent.identity == 'H':
-                all_samplers_H.add(agent)
-            elif agent.identity == 'D':
-                all_samplers_D.add(agent)
-            else:
-                raise ValueError("agent identity should be assigned")
-            # assert agent.sampler_state == False, "at this point all samplers states should be false"
-            assert agent.activation_state == False, "at this point all agents should be inactive"
-            agent.sampler_state = True
-        return (all_samplers_H, all_samplers_D)
-
-    def update_round(self):
+    def update_round(self, tokenizer, pipe, update_fraction=0.5):
         """
         Update the network for one round by responding to news intensities and adjusting the network accordingly.
         """
         self.iterations +=1
-        # sL, sR = self.generate_news_significance()
-
-        allsamplers = self.pick_samplers()
-        # Respond to the news intensities, continue this untill steady state is reached
-        # self.run_cascade(sL, sR, allsamplers)
-
-        # Network adjustment
-        # self.network_adjustment(sL, sR)
-
-        # Reset states for next round
-        for agent in self.activated:
-            agent.reset_activation_state()
-
-        self.activated = set()
+        # force tweets for first round
+        if self.iterations == 1: # or len(self.activated) == 0:
+            
+            for agent in self.rng.choice(self.all_agents, int(len(self.all_agents) * update_fraction), replace=False):
+                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations, force_active=True)
+        else:
+            # randomize order of agent updates
+            self.rng.shuffle(self.all_agents)
+            for agent in self.all_agents:
+                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations)
+        for agent in self.all_agents:
+            agent.commit()
+            
+        # self.activated = set()
         
 class RandomNetwork(_Network):
     """
@@ -185,7 +170,7 @@ class RandomNetwork(_Network):
                         if self.rng.random() < self.p:
                             self.add_connection(agent1, agent2)
         else:
-            print(f'A random network is initialized with p: {self.p} and {len(self.all_agents)} agents and correlation {self.correlation}')
+            print(f'A random network is initialized with p: {self.p} and {len(self.all_agents)} agents')
             # If no degree `k` is provided, fall back to the Erdős–Rényi model
             for agent1 in self.all_agents:
                 for agent2 in self.all_agents:

@@ -1,4 +1,25 @@
 # # funcions from Networks, measuring cascades!
+# def pick_samplers(self):
+#         """
+#         Pick samplers for the Depressed and Happy media hubs.
+
+#         Returns:
+#             Tuple of sets of samplers for the depressed and happy media hubs.
+#         """
+        
+#         all_samplers_H, all_samplers_D = set(), set()
+#         # for agent in self.rng.choice(list(self.all_agents), int(len(self.all_agents) * self.update_fraction), replace=False):
+#         for agent in self.rng.choice(self.all_agents, int(len(self.all_agents) * self.update_fraction), replace=False):
+#             if agent.identity == 'H':
+#                 all_samplers_H.add(agent)
+#             elif agent.identity == 'D':
+#                 all_samplers_D.add(agent)
+#             else:
+#                 raise ValueError("agent identity should be assigned")
+#             # assert agent.sampler_state == False, "at this point all samplers states should be false"
+#             assert agent.activation_state == False, "at this point all agents should be inactive"
+#             agent.sampler_state = True
+#         return (all_samplers_H, all_samplers_D)
 # def run_cascade(self, sL, sR, all_samplers, analyze=False):
 #     """
 #     Continue responding to the news intensities until a steady state is reached (no changes in activation state).
@@ -107,6 +128,25 @@
 #     self.activated = set()
     
 #     return merged, size_distiribution_cascades, fractions_polarized
+# def update_round(self):
+#         """
+#         Update the network for one round by responding to news intensities and adjusting the network accordingly.
+#         """
+#         self.iterations +=1
+#         # sL, sR = self.generate_news_significance()
+
+#         allsamplers = self.pick_samplers()
+#         # Respond to the news intensities, continue this untill steady state is reached
+#         # self.run_cascade(sL, sR, allsamplers)
+
+#         # Network adjustment
+#         # self.network_adjustment(sL, sR)
+
+#         # Reset states for next round
+#         for agent in self.activated:
+#             agent.reset_activation_state()
+
+#         self.activated = set()
 
 # def run_cascade_for_visuals(self, sL, sR):
 #     """
