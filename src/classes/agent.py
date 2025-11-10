@@ -25,6 +25,7 @@ class Agent:
         self.identity: str = identity
         self.agent_connections = set()
         self.activation_state = False
+        self._next_last_tweet: str  = "NO_TWEET"
         self.response_threshold = rng.random() if rng else np.random.random()
 
         # Additional attributes for LLM interaction
@@ -35,35 +36,8 @@ class Agent:
         self.last_tweet: str | None = None
         self._next_activation_state = False 
 
-    # attempt to seed the whole thing -> did not work
-    def generate_with_gen_chat(self, prompt, pipe, temperature=0.8, top_p=0.95, max_new_tokens=256):
-        tok = pipe.tokenizer
 
-        # transform prompts into tensors
-        inputs = tok(prompt, return_tensors="pt")
-
-        # moves them to the correct device
-        inputs = {k: v.to(pipe.model.device) for k, v in inputs.items()}
-
-        out_ids = pipe.model.generate(
-            **inputs,
-            do_sample=True,
-            seeded=True,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-            pad_token_id=tok.pad_token_id or tok.eos_token_id,
-            eos_token_id=tok.eos_token_id,
-            generation_config=None,  # ensure no conflicting config object
-        )
-
-        # only grab newly generated tokens
-        new_tokens = out_ids[0, inputs["input_ids"].shape[1]:]
-
-        # decode and return the generated text
-        return tok.decode(new_tokens, skip_special_tokens=True).strip()
-    
-    # helper function to seed but did not work. 
+    # helper function to seed
     def _ensure_torch_gen(self, llm_pipe):
         """Create (or reuse) a persistent per-agent torch.Generator on the right device."""
         dev = llm_pipe.model.device
@@ -76,37 +50,51 @@ class Agent:
 
         # own history block
         own_block = "" 
-        # if len(self.tweethistory) == 0:
-        #     own_block = "(no own previous tweets)"
-        # else:
-        #     recent = list(reversed(self.tweethistory[-5:]))  # newest first
-        #     own_block = "\n".join(f"- {t[:max_chars]}" for t in recent)
+        if len(self.tweethistory) == 0:
+            own_block = "(no own previous tweets)"
+        else:
+            recent = list(reversed(self.tweethistory[-2:]))  # newest first
+            own_block = "\n".join(f"- {t[:max_chars]}" for t in recent)
         
         neighbor_block = "(no neighbor tweets)" if len(neighbor_pairs) == 0 else "\n".join(
             f"- Agent {nid}: {txt[:240]}" for nid, txt in neighbor_pairs
         )
 
-        if not force_active:
-            sup_text = "Decide whether to post a short new tweet (<= " f"{max_chars} chars)."
+        # agents are asked to tweet
+        if force_active:
+            system = (f"You are a social media user {identity}.\n"
+                       "Think of an interesting short tweet to post.\n"
+                       "You must post a short tweet (<= " f"{max_chars} chars).\n"
+                       "POST FORMAT (exactly):\n"
+                       "Start your reply with: TWEET:\n"
+                       "Then include your tweet text on the next line:\n"
+                       "TWEET: <your tweet text>\n"
+                       "Do not add anything else, do not explain.\n\n"
+                       )
+            user = (
+                f"Identity: {identity}\n"
+                f"Round: {round_idx}\n"
+                f"Your previous tweets:\n{own_block}\n"
+            )
+            
+        # The agents may decide not to tweet
         else:
-            sup_text = "You must post a short new tweet (<= " f"{max_chars} chars)."
-
-        system = (
-            f"You are a social media user {identity}.\n"
-           "You are given your recent tweets (in case you've already tweeted) and a short list of neighbor tweets (in case they have tweeted) (you can decide to randomly post).\n"
-            f"{sup_text}\n"
-            "Only post your new tweet.\n"
+            system = (f"You are a social media user {identity}.\n"
+            "You are given a short list of neighbor tweets (in case they have tweeted).\n"
+            "Think of an interesting short tweet to post.\n"
+            "Decide whether to post a short new tweet (<= " f"{max_chars} chars).\n"
             "REPLY FORMAT (exactly):\n"
-            "If you want to tweet, reply with: TWEET: <your tweet text>\n"
+            "If you want to tweet, reply with: TWEET: <your tweet text>\n" 
             "If you don't want to tweet, reply with: NO_TWEET\n"
-            "Do not add anything else, do not explain.\n\n"
-        )
-        user = (
-            f"Identity: {identity}\n"
-            f"Round: {round_idx}\n"
-            f"Your recent tweets:\n{own_block}\n\n"
-            f"Neighbor tweets:\n{neighbor_block}"
-        )
+            "Do not add anything else, do not explain.\n\n")
+            
+
+            user = (
+                f"Identity: {identity}\n"
+                f"Round: {round_idx}\n"
+                f"Neighbor tweets:\n{neighbor_block}\n"
+                f"Your previous tweets:\n{own_block}\n"
+            )
 
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         # One message per neighbor (clear separation)
@@ -135,7 +123,7 @@ class Agent:
 
         activated, activated_neighbors = self.respond()
         # if force_active:
-        #     activated = True
+        #     activated = Trues
         if True:
             for n in activated_neighbors:
                 if n.activation_state and n.last_tweet:
@@ -145,9 +133,9 @@ class Agent:
         prompt = self.build_tweet_prompt(
             tokenizer, self.ID, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
         )
-        # #gen = self._ensure_torch_gen(llm_pipe)
-        # if gen is None:
-        #     raise ValueError("Torch generator not initialized properly.")
+        gen = self._ensure_torch_gen(llm_pipe)
+        if gen is None:
+            raise ValueError("Torch generator not initialized properly.")
         
         out = llm_pipe(
             prompt,
@@ -155,29 +143,47 @@ class Agent:
             temperature=0.8,
             top_p=0.95,
             max_new_tokens=256,
-            # generator=gen,
+            kwargs={"generator": gen},
         )[0]["generated_text"].strip() 
+        if force_active:
+            print (f"Agent {self.ID} FORCED TWEET OUTPUT: {out}")
 
         do_tweet, tweet = self.parse_tweet_decision(out)
         if do_tweet:
             tweet = tweet.strip()
             if len(tweet) > max_chars:
                 tweet = tweet[:max_chars]
-            self.last_tweet = tweet
-            self.tweethistory.append(tweet)
+            self._next_last_tweet = tweet
             self._next_activation_state = True
         else:
-            self.last_tweet = None
+            self._next_last_tweet = "NO_TWEET"
             self._next_activation_state = False
 
     # Finalize the activation state for this step
     def commit(self):
+        """
+        Commit the next activation state and last tweet.
+        S.T all updates happen simultaneously after all agents have decided.
+        """       
+        self.tweethistory.append(self._next_last_tweet)
+        self.last_tweet = self._next_last_tweet
         self.activation_state = self._next_activation_state
 
     def reset_activation_state(self):
+        '''
+        Reset the activation state of the agent.
+        '''
         self.activation_state = False
 
     def parse_tweet_decision(self, text: str):
+        """
+        Parse the LLM output to determine if the agent decided to tweet or not.
+        Args:
+            text (str): The LLM output text.    
+        Returns:
+            bool: True if the agent decided to tweet, False otherwise.
+            str: The tweet text if the agent decided to tweet, empty string otherwise.
+        """
         t = text.strip()
         low = t.lower()
 
@@ -210,17 +216,21 @@ class Agent:
         new_activation_state = False
 
 
-        if len(self.agent_connections) > 0: 
+        if len(self.agent_connections) > 0:
             actually_activated = [agent for agent in self.agent_connections if agent.activation_state] 
             neighbors_activated = len(actually_activated)
             fraction_activated = neighbors_activated/len(self.agent_connections)
         else:
             fraction_activated = 0
         new_activation_state = fraction_activated > self.response_threshold
-        if new_activation_state:
-            return True, set(actually_activated)
 
-        return False, set()
+        # FOR NOW, IGNORE THE THRESHOLD AND JUST ACTIVATE IF ANY NEIGHBORS ARE ACTIVE
+        # if new_activation_state:
+            # return True, set(actually_activated)
+        
+        return True, sorted(actually_activated, key=lambda a: a.ID)
+
+        return False, []
 
     def add_edge(self, agent):
         """

@@ -2,7 +2,6 @@ import numpy as np
 from src.classes.agent import Agent
 from scipy import stats
 import numpy as np
-import matplotlib.pyplot as plt
 # from powerlaw import Fit
 import bisect
 
@@ -45,8 +44,8 @@ class _Network:
         self.new_edge = []
         self.removed_edge = []
 
-        self.agentsD = [Agent(i, "D", rng=self.rng) for i in range(int(num_agents * starting_distribution))]
-        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=self.rng) for i in range(int(num_agents * (1 - starting_distribution)))]
+        self.agentsD = [Agent(i, "D", rng=np.random.default_rng(seed + i)) for i in range(int(num_agents * starting_distribution))]
+        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=np.random.default_rng(seed + i + len(self.agentsD))) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
       
@@ -115,9 +114,11 @@ class _Network:
                 agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations, force_active=True)
         else:
             # randomize order of agent updates
-            self.rng.shuffle(self.all_agents)
-            for agent in self.all_agents:
-                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations)
+            permuted = self.rng.permutation(self.all_agents)
+            for agent in permuted:
+                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations, force_active=False)
+        
+        # state update after all agents have decided
         for agent in self.all_agents:
             agent.commit()
             
