@@ -4,6 +4,7 @@ import os, torch
 import sys
 import inspect
 from src.classes.agent import Agent
+import src.metrics as metrics
 from src.classes.network import RandomNetwork
 import src.visualization as vis
 
@@ -53,8 +54,8 @@ if __name__ == "__main__":
     print("GENERATOR: ", inspect.signature(pipe.model.generate))
     
     # Create a random network and run some rounds
-    r_network = RandomNetwork(p=0.5, num_agents=10, mean=0, starting_distribution=0.5, seed=42)
-    for r in range(10):
+    r_network = RandomNetwork(p=0.5, num_agents=30, mean=0, starting_distribution=0.5, seed=42)
+    for r in range(100):
         r_network.update_round(tokenizer, pipe)
     tweet_history = [(a.ID, a.tweethistory) for a in r_network.all_agents]
 
@@ -62,7 +63,25 @@ if __name__ == "__main__":
     for agent_id, hist in tweet_history:
         print(f"Agent {agent_id}: {hist}")
         print("\n")
-    
-    
+
+    n=10
+    distorted_language = metrics.analyze_distorted_language(
+        r_network,
+        ngrams_file="data/distorted_language_ngrams.tsv",
+        skip_header=True,
+        n=n,
+        column_idx=0,
+    )
+
+    # Print the results
+    for agent_id, met in distorted_language.items():
+        print(f"Agent {agent_id}:")
+        print(f"  First {n} tweets: {met['first_n']} distorted")
+        print(f"  Last {n} tweets: {met['last_n']} distorted")
+        print(f"  Total tweets: {met['total_tweets']}")
+        print("  Fraction distorted in first tweets: {:.2f}".format(met['frac_distorted_first']))
+        print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
+        print("\n")
+
     # wat = vis.print_network(r_network)
 
