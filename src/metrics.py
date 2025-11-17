@@ -49,7 +49,7 @@ def contains_ngram(text: str, ngrams: set) -> bool:
             return True
     return False
 
-def analyze_distorted_language(network, ngrams_file: str, n: int = 5, column_idx: int = 0):
+def analyze_distorted_language(network, ngrams_file: str, n: int = 5, skip_header= True, column_idx: int = 0):
     """
     For each agent in the network, count distorted-language n-grams in:
       - the first N tweets
@@ -65,7 +65,7 @@ def analyze_distorted_language(network, ngrams_file: str, n: int = 5, column_idx
     Returns:
         dict: {agent_id: {"first_n": count, "last_n": count, "total_tweets": int}}
     """
-    ngrams = load_ngrams_tsv(ngrams_file, column_idx=column_idx)
+    ngrams = load_ngrams_tsv(ngrams_file, skip_header=skip_header)
     print(f"Loaded {len(ngrams)} distorted-language n-grams from {ngrams_file}")
     highest_frac = 0
 

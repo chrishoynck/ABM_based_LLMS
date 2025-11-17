@@ -54,8 +54,8 @@ if __name__ == "__main__":
     print("GENERATOR: ", inspect.signature(pipe.model.generate))
     
     # Create a random network and run some rounds
-    r_network = RandomNetwork(p=0.5, num_agents=30, mean=0, starting_distribution=0.5, seed=42)
-    for r in range(100):
+    r_network = RandomNetwork(p=0.5, num_agents=10, mean=0, starting_distribution=0.5, seed=42)
+    for r in range(10):
         r_network.update_round(tokenizer, pipe)
     tweet_history = [(a.ID, a.tweethistory) for a in r_network.all_agents]
 
@@ -64,8 +64,8 @@ if __name__ == "__main__":
         print(f"Agent {agent_id}: {hist}")
         print("\n")
 
-    n=10
-    distorted_language = metrics.analyze_distorted_language(
+    n=2
+    distorted_language, highest_frac = metrics.analyze_distorted_language(
         r_network,
         ngrams_file="data/distorted_language_ngrams.tsv",
         skip_header=True,
@@ -83,5 +83,5 @@ if __name__ == "__main__":
         print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
         print("\n")
 
-    # wat = vis.print_network(r_network)
+    wat = vis.print_network(r_network)
 
