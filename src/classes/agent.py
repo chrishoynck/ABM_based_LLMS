@@ -32,6 +32,7 @@ class Agent:
         self.rng = rng if rng else np.random.default_rng()
         self._base_seed = int(self.rng.integers(0, 2**31 - 1))
         self._torch_gen = None  # will be created on first use
+        self._force_active = False
         self.tweethistory = []
         self.last_tweet: str | None = None
         self._next_activation_state = False 
@@ -106,12 +107,11 @@ class Agent:
     
     
 
-    def step_llm_tweet(self, tokenizer, llm_pipe, round_idx:int, max_chars = 240, force_active=False):
+    def step_llm_tweet(self, tokenizer, round_idx:int, max_chars = 240, force_active=False):
         """
         Use the LLM to decide whether to tweet or not.
 
         Args:
-            llm_pipe: The LLM pipeline to use.
             round_idx (int): The current round index.
             max_chars (int, optional): The maximum number of characters for the tweet. Defaults to 240.
         Returns:
@@ -124,31 +124,28 @@ class Agent:
         activated, activated_neighbors = self.respond()
         # if force_active:
         #     activated = Trues
-        if True:
-            for n in activated_neighbors:
-                if n.activation_state and n.last_tweet:
-                    neighbor_msgs.append((n.ID, n.last_tweet))
-            neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
-        
+
+        for n in activated_neighbors:
+            if n.activation_state and n.last_tweet:
+                neighbor_msgs.append((n.ID, n.last_tweet))
+        neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
+        self._force_active = force_active
         prompt = self.build_tweet_prompt(
             tokenizer, self.ID, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
         )
-        gen = self._ensure_torch_gen(llm_pipe)
-        if gen is None:
-            raise ValueError("Torch generator not initialized properly.")
-        
-        out = llm_pipe(
-            prompt,
-            do_sample=True,
-            temperature=0.8,
-            top_p=0.95,
-            max_new_tokens=256,
-            kwargs={"generator": gen},
-        )[0]["generated_text"].strip() 
-        if force_active:
-            print (f"Agent {self.ID} FORCED TWEET OUTPUT: {out}")
 
-        do_tweet, tweet = self.parse_tweet_decision(out)
+        return prompt
+    
+    def send_tweet(self, max_chars, raw_tweet):
+        # gen = self._ensure_torch_gen(llm_pipe)
+        # if gen is None:
+            # raise ValueError("Torch generator not initialized properly.")
+        
+        
+        if self._force_active:
+            print (f"Agent {self.ID} FORCED TWEET OUTPUT: {raw_tweet}")
+
+        do_tweet, tweet = self.parse_tweet_decision(raw_tweet)
         if do_tweet:
             tweet = tweet.strip()
             if len(tweet) > max_chars:
@@ -158,6 +155,7 @@ class Agent:
         else:
             self._next_last_tweet = "NO_TWEET"
             self._next_activation_state = False
+        
 
     # Finalize the activation state for this step
     def commit(self):

@@ -66,15 +66,16 @@ def analyze_distorted_language(network, ngrams_file: str, n: int = 5, skip_heade
         dict: {agent_id: {"first_n": count, "last_n": count, "total_tweets": int}}
     """
     ngrams = load_ngrams_tsv(ngrams_file, skip_header=skip_header)
+    # print(ngrams)
     print(f"Loaded {len(ngrams)} distorted-language n-grams from {ngrams_file}")
     highest_frac = 0
 
     results = {}
     for agent in network.all_agents:
         history = getattr(agent, "tweethistory", [])
-        # filter out None / "NO_TWEET" entries
-        
-        history = [t for t in history if t]
+ 
+        # now only consider actual tweets
+        history = [t for t in history if t!= "NO_TWEET"]
         first_tweets = history[:n]
         last_tweets = history[-n:] if len(history) >= n else history
 

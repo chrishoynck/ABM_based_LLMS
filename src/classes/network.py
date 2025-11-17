@@ -1,7 +1,6 @@
-import numpy as np
+import numpy as np, torch
 from src.classes.agent import Agent
 from scipy import stats
-import numpy as np
 # from powerlaw import Fit
 import bisect
 
@@ -40,6 +39,8 @@ class _Network:
         self.directed = directed
 
         self.rng = np.random.default_rng(seed)
+        self.seed = seed
+        self._torch_gen = None
 
         self.new_edge = []
         self.removed_edge = []
@@ -88,35 +89,74 @@ class _Network:
             if not self.directed:
                 self.connections.remove((agent2, agent1))
 
-    def generate_DSC_significance(self):
+    def inference_w_batches(self,pipe, prompts, batch_size, **gen_kwargs):
         """
-        Generate news signifiance for both hubs based on their correlation.
-        
-        Returns:
-            Tuple of news significance for the left and right media hubs.
+        Run LLM pipeline on a list of prompts in mini-batches.
+        Returns a flat list of outputs, same order as prompts.
         """
-        covar = [[1, self.correlation ], [self.correlation, 1]]
-        stims = self.rng.multivariate_normal(mean = [self.mean, self.mean], cov = covar, size = 1)
-        stims_perc = stats.norm.cdf(stims, loc = 0, scale = 1) 
-        return stims_perc[0][0], stims_perc[0][1]
+        all_outputs = []
+        for i in range(0, len(prompts), batch_size):
+            batch_prompts = prompts[i:i + batch_size]
+            batch_outputs = pipe(batch_prompts, **gen_kwargs)
+            all_outputs.extend(batch_outputs)
+        return all_outputs
     
-    
-
     def update_round(self, tokenizer, pipe, update_fraction=0.5):
         """
         Update the network for one round by responding to news intensities and adjusting the network accordingly.
         """
         self.iterations +=1
+        prompts = []
+        batch_size = 64
+        agents_w_prompt = []
         # force tweets for first round
         if self.iterations == 1: # or len(self.activated) == 0:
-            
+            for agent in self.all_agents:
+                # set default
+                agent.send_tweet(max_chars=240, raw_tweet= "NO_TWEET")
             for agent in self.rng.choice(self.all_agents, int(len(self.all_agents) * update_fraction), replace=False):
-                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations, force_active=True)
+                prompt = agent.step_llm_tweet(tokenizer, round_idx=self.iterations, force_active=True)
+                prompts.append(prompt)
+                agents_w_prompt.append(agent)
+
+        # normal inferencing
         else:
             # randomize order of agent updates
             permuted = self.rng.permutation(self.all_agents)
             for agent in permuted:
-                agent.step_llm_tweet(tokenizer, pipe, round_idx=self.iterations, force_active=False)
+                prompt = agent.step_llm_tweet(tokenizer, round_idx=self.iterations, force_active=False)
+                prompts.append(prompt)
+                agents_w_prompt.append(agent)
+            assert len(agents_w_prompt) == len(self.all_agents), f"Agents w promt {len(agents_w_prompt)}, Agents: {len(self.all_agents)} All agents should have a prompt"
+        
+        #seed this thing 
+        if self._torch_gen is None:
+            dev = pipe.model.device
+            self._torch_gen = torch.Generator(device=dev).manual_seed(self.seed)
+
+        # generate outputs in parallel
+        if prompts:
+        #     out = pipe(
+        #     prompts,
+        #     do_sample=True,
+        #     temperature=0.8,
+        #     top_p=0.95,
+        #     max_new_tokens=256,
+        #     kwargs={"generator": self._torch_gen},
+        # )
+            gen_kwargs = dict(
+            do_sample=True,
+            temperature=0.8,
+            top_p=0.95,
+            max_new_tokens=256,
+            kwargs={"generator": self._torch_gen},
+            # generator=self.torch_gen,  # if you use a torch.Generator
+            )
+            out = self.inference_w_batches(pipe, prompts, batch_size=batch_size, **gen_kwargs)
+        
+        # agents send out their tweets
+        for agent, tweet in zip(agents_w_prompt, out):
+            agent.send_tweet(max_chars =240, raw_tweet = tweet[0]["generated_text"].strip())
         
         # state update after all agents have decided
         for agent in self.all_agents:
@@ -252,6 +292,79 @@ class ScaleFreeNetwork(_Network):
 
         self.initialize_network()
 
+    def initialize_network(self):
+        """
+        1) Select m initial agents, fully connect them (seed network).
+        2) For each remaining agent, connect it to m existing agents with probability
+        = (agent_degree / total_degree) using _pick_agent_by_degree_global().
+        3) Assertions ensure total_degree > 0 for valid probability-based sampling.
+        MAYBE REQUIRES WORK: some checks to ensure no agents gets stuck with degree < m
+        """
+        # Basic checks
+        n = len(self.all_agents)
+        assert self.m > 0, "m must be positive."
+        assert self.m < n, "Number of connections 'm' must be less than number of agents."
+
+        # Initialize degree_distribution to 0 for all agents
+        for agent in self.all_agents:
+            self.degree_distribution[agent] = 0
+
+        # Step 1: Pick m initial agents and fully connect them
+        #m0_agents = self.rng.choice(self.all_agents, self.m, replace=False)  # Use self.rng.choice for reproducibility
+
+        m1 = int(self.m/2)
+        if self.m %2 == 0:
+            m2 = int(self.m/2)
+        else:
+            m2 = int(self.m/2) + 1
+
+        # balanced out hubs
+        m0_agents = np.concatenate([self.rng.choice(self.agentsD, m1, replace=False), self.rng.choice(self.agentsH, m2, replace=False)])
+
+        if self.m > 1:  # Fully connect seed agents only if m > 1
+            for i in range(len(m0_agents)):
+                for j in range(i + 1, len(m0_agents)):
+                    self.add_connection(m0_agents[i], m0_agents[j])
+
+                    # if directed, enforce bidirection
+                    if self.directed:
+                        self.add_connection(m0_agents[j], m0_agents[i])
+
+        else:  # Handle the case for m=1
+            # If m=1, connect the seed agent to another random agent
+            random_agent = self.rng.choice([agent for agent in self.all_agents if agent not in m0_agents])
+            self.add_connection(m0_agents[0], random_agent)
+
+        # Ensure total_degree is initialized properly
+        assert self.total_degree > 0, "Seed network must have edges, so total_degree > 0."
+
+        # Step 2: For the remaining agents, attach each with m edges via scale-free selection
+        remaining_agents = [agent for agent in self.all_agents if agent not in m0_agents]
+        for new_agent in remaining_agents:
+            assert self.total_degree > 0, "Cannot do preferential attachment if total_degree = 0."
+
+            # Use a set to track which agents have already been chosen
+            chosen = set()
+            forbidden = {new_agent}  # Prevent self-loops
+
+            while len(chosen) < self.m:
+                candidate = self._pick_agent_by_degree_global(forbidden=forbidden, max_tries=500)
+                assert candidate is not None, "Initialization failed as no candidate for connection is found"
+                chosen.add(candidate)
+                forbidden.add(candidate)  # Ensure unique connections
+
+            # Add edges to the chosen agents
+            for target_agent in chosen:
+                self.add_connection(new_agent, target_agent)
+
+        assert all(self.degree_distribution[agent] >= self.m for agent in remaining_agents), (
+            f"Some later added agents have degree less than m={self.m}. Check initialization logic."
+        )
+
+        # # Step 4: Verify the scale-free properties
+        # self.verify_scale_free_distribution(self.plot)
+
+
     def _pick_agent_by_degree_global(self, forbidden=set(), max_tries=100):
         """
         Pick an agent (not in 'forbidden') by sampling from self.cumulative_degree_list.
@@ -290,14 +403,16 @@ class ScaleFreeNetwork(_Network):
         """
         if agent1 != agent2 and (agent1, agent2) not in self.connections:
             agent1.add_edge(agent2)
-            agent2.add_edge(agent1)
             self.connections.add((agent1, agent2))
-            self.connections.add((agent2, agent1))
-
-            # Update degree distribution
             self.degree_distribution[agent1] = self.degree_distribution.get(agent1, 0) + 1
-            self.degree_distribution[agent2] = self.degree_distribution.get(agent2, 0) + 1
-            self.total_degree += 2  # 2 'ends' of edges
+            self.total_degree += 1 
+
+            if not self.directed:
+                agent2.add_edge(agent1)
+                self.connections.add((agent2, agent1))
+                # Update degree distribution
+                self.degree_distribution[agent2] = self.degree_distribution.get(agent2, 0) + 1
+                self.total_degree += 1  # 2 'ends' of edges
 
             # Rebuild the cumulative sums for probability sampling
             self._rebuild_cumulative_list()
@@ -312,14 +427,19 @@ class ScaleFreeNetwork(_Network):
         """
         if agent1 != agent2 and (agent1, agent2) in self.connections:
             agent1.remove_edge(agent2)
-            agent2.remove_edge(agent1)
             self.connections.remove((agent1, agent2))
-            self.connections.remove((agent2, agent1))
 
             # Update degree distribution
+            self.total_degree -= 1
             self.degree_distribution[agent1] -= 1
-            self.degree_distribution[agent2] -= 1
-            self.total_degree -= 2
+
+            if not self.directed:
+                agent2.remove_edge(agent1)
+                self.connections.remove((agent2, agent1))
+
+                # update degree distribution
+                self.total_degree -= 1
+                self.degree_distribution[agent2] -= 1
 
             self._rebuild_cumulative_list()
 
@@ -335,77 +455,6 @@ class ScaleFreeNetwork(_Network):
             running_sum += deg
             self.cumulative_degree_list.append(running_sum)
         
-    def initialize_network(self):
-        """
-        1) Select m initial agents, fully connect them (seed network).
-        2) For each remaining agent, connect it to m existing agents with probability
-        = (agent_degree / total_degree) using _pick_agent_by_degree_global().
-        3) Assertions ensure total_degree > 0 for valid probability-based sampling.
-        MAYBE REQUIRES WORK: some checks to ensure no agents gets stuck with degree < m
-        """
-        # Basic checks
-        n = len(self.all_agents)
-        assert self.m > 0, "m must be positive."
-        assert self.m < n, "Number of connections 'm' must be less than number of agents."
-
-        # Initialize degree_distribution to 0 for all agents
-        for agent in self.all_agents:
-            self.degree_distribution[agent] = 0
-
-        # Step 1: Pick m initial agents and fully connect them
-        m0_agents = self.rng.choice(self.all_agents, self.m, replace=False)  # Use self.rng.choice for reproducibility
-
-        m1 = int(self.m/2)
-        if self.m %2 == 0:
-            m2 = int(self.m/2)
-        else:
-            m2 = int(self.m/2) + 1
-
-        # balanced out hubs
-        m0_agents = np.concatenate([self.rng.choice(self.agentsD, m1, replace=False), self.rng.choice(self.agentsH, m2, replace=False)])
-
-        if self.m > 1:  # Fully connect seed agents only if m > 1
-            for i in range(len(m0_agents)):
-                for j in range(i + 1, len(m0_agents)):
-                    self.add_connection(m0_agents[i], m0_agents[j])
-        else:  # Handle the case for m=1
-            # If m=1, connect the seed agent to another random agent
-            random_agent = self.rng.choice([agent for agent in self.all_agents if agent not in m0_agents])
-            self.add_connection(m0_agents[0], random_agent)
-
-        # Ensure cumulative degree list is rebuilt after seed network
-        self._rebuild_cumulative_list()
-
-        # Ensure total_degree is initialized properly
-        assert self.total_degree > 0, "Seed network must have edges, so total_degree > 0."
-
-        # Step 2: For the remaining agents, attach each with m edges via scale-free selection
-        remaining_agents = [agent for agent in self.all_agents if agent not in m0_agents]
-        for new_agent in remaining_agents:
-            assert self.total_degree > 0, "Cannot do preferential attachment if total_degree = 0."
-
-            # Use a set to track which agents have already been chosen
-            chosen = set()
-            forbidden = {new_agent}  # Prevent self-loops
-
-            while len(chosen) < self.m:
-                candidate = self._pick_agent_by_degree_global(forbidden=forbidden, max_tries=500)
-                chosen.add(candidate)
-                forbidden.add(candidate)  # Ensure unique connections
-
-            # Add edges to the chosen agents
-            for target_agent in chosen:
-                self.add_connection(new_agent, target_agent)
-
-        assert all(degree >= self.m for degree in self.degree_distribution.values()), (
-            f"Some agents have degree less than m={self.m}. Check initialization logic."
-        )
-
-        # # Step 4: Verify the scale-free properties
-        # self.verify_scale_free_distribution(self.plot)
-
-
-
     def network_adjustment(self, sL, sR):
         """
         Adjust the network by breaking ties and adding new connections in a scale-free manner.

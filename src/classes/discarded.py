@@ -215,6 +215,19 @@
 #         assert fit.power_law.KS() < 0.5, f"Power-law fit is not significant; {fit.power_law.KS()}"
 #         # assert fit.power_law.alpha < 7, f"Power-law exponent is too high; {fit.power_law.alpha}"
 
+# def generate_DSC_significance(self):
+#         """
+#         Generate news signifiance for both hubs based on their correlation.
+        
+#         Returns:
+#             Tuple of news significance for the left and right media hubs.
+#         """
+#         covar = [[1, self.correlation ], [self.correlation, 1]]
+#         stims = self.rng.multivariate_normal(mean = [self.mean, self.mean], cov = covar, size = 1)
+#         stims_perc = stats.norm.cdf(stims, loc = 0, scale = 1) 
+#         return stims_perc[0][0], stims_perc[0][1]
+    
+    
 
 
 #########################################################

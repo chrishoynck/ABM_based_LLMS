@@ -1,11 +1,11 @@
 
 from transformers import AutoTokenizer, BitsAndBytesConfig, set_seed, pipeline
 import os, torch
-import sys
+import sys, argparse
 import inspect
 from src.classes.agent import Agent
 import src.metrics as metrics
-from src.classes.network import RandomNetwork
+from src.classes.network import RandomNetwork, ScaleFreeNetwork
 import src.visualization as vis
 
 ######################################################################
@@ -46,27 +46,67 @@ pipe = pipeline(
     return_full_text=False,                        
 )
 
+def build_network(args):
+    if args.net == "sf":
+        return ScaleFreeNetwork(
+            m=args.m,
+            num_agents=args.num_agents,
+            mean=args.mean,
+            starting_distribution=args.starting_distribution,
+            seed=args.seed,
+        )
+    else:
+        return RandomNetwork(
+            p=args.p,
+            k=args.k,
+            num_agents=args.num_agents,
+            mean=args.mean,
+            starting_distribution=args.starting_distribution,
+            seed=args.seed,
+        )
 
+def generate_parser():
+    "parse all given arguments"
+    parser = argparse.ArgumentParser(description="Run LLM agent simulation.")
+    parser.add_argument("net", nargs="?", choices=["sf", "r"], default="sf", help="Network type: sf=ScaleFree, r=Random")
+    parser.add_argument("--rounds", type=int, default=10, help="Number of update rounds")
+    parser.add_argument("--num_agents", type=int, default=10, help="Total number of agents")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--mean", type=float, default=0.0, help="Mean (passed to network)")
+    parser.add_argument("--starting_distribution", type=float, default=0.5, help="Fraction of D vs H agents")
+    # Scale-free specific
+    parser.add_argument("--m", type=int, default=2, help="Edges per new node (scale-free)")
+    # Random network specific
+    parser.add_argument("--p", type=float, default=0.5, help="Edge probability (random network)")
+    parser.add_argument("--k", type=int, default=0, help="Regular degree (Watts–Strogatz if >0)")
+
+    return parser.parse_args()
 
 if __name__ == "__main__":
     
     print(type(pipe.model))
     print("GENERATOR: ", inspect.signature(pipe.model.generate))
+
+    # parse arguments and build network
+    args = generate_parser()
+    network = build_network(args)
     
-    # Create a random network and run some rounds
-    r_network = RandomNetwork(p=0.5, num_agents=10, mean=0, starting_distribution=0.5, seed=42)
-    for r in range(10):
-        r_network.update_round(tokenizer, pipe)
-    tweet_history = [(a.ID, a.tweethistory) for a in r_network.all_agents]
+
+    # update network for a given amount of rounds (agents send out tweets)
+    for r in range(args.rounds):
+        network.update_round(tokenizer, pipe)
+        if r%10 == 0:
+            print(f"finished round {r}")
+    tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
     # print tweet histories
     for agent_id, hist in tweet_history:
         print(f"Agent {agent_id}: {hist}")
         print("\n")
 
-    n=2
+    n=10
     distorted_language, highest_frac = metrics.analyze_distorted_language(
-        r_network,
+        network,
         ngrams_file="data/distorted_language_ngrams.tsv",
         skip_header=True,
         n=n,
@@ -83,5 +123,5 @@ if __name__ == "__main__":
         print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
         print("\n")
 
-    wat = vis.print_network(r_network)
+    wat = vis.print_network(network)
 

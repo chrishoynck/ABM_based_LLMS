@@ -7,3 +7,4 @@ powerlaw==1.5
 scipy==1.15.1
 statsmodels==0.14.4
 pillow==11.1.0
+datasets
