@@ -3,10 +3,11 @@ from transformers import AutoTokenizer, BitsAndBytesConfig, set_seed, pipeline
 import os, torch
 import sys, argparse
 import inspect
-from src.classes.agent import Agent
-import src.metrics as metrics
+# from src.classes.agent import Agent
+import utils.metrics as metrics
 from src.classes.network import RandomNetwork, ScaleFreeNetwork
-import src.visualization as vis
+import utils.load_personas as lp
+import utils.visualization as vis
 
 ######################################################################
 ### Llama 2 Setup
@@ -46,7 +47,7 @@ pipe = pipeline(
     return_full_text=False,                        
 )
 
-def build_network(args):
+def build_network(args, personas):
     if args.net == "sf":
         return ScaleFreeNetwork(
             m=args.m,
@@ -54,6 +55,7 @@ def build_network(args):
             mean=args.mean,
             starting_distribution=args.starting_distribution,
             seed=args.seed,
+            personas=personas,
         )
     else:
         return RandomNetwork(
@@ -63,6 +65,7 @@ def build_network(args):
             mean=args.mean,
             starting_distribution=args.starting_distribution,
             seed=args.seed,
+            personas=personas,
         )
 
 def generate_parser():
@@ -89,8 +92,10 @@ if __name__ == "__main__":
 
     # parse arguments and build network
     args = generate_parser()
-    network = build_network(args)
     
+
+    personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
+    network = build_network(args, personas=personas)
 
     # update network for a given amount of rounds (agents send out tweets)
     for r in range(args.rounds):

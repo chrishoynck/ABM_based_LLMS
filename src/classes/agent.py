@@ -1,4 +1,4 @@
-import numpy as np, torch
+import numpy as np
 
 class Agent:
     """
@@ -7,7 +7,7 @@ class Agent:
     The agent can be in one of two states: activated or not activated.
     The agent can also be a sampler, which means that it will always respond to a piece of news, regardless of the response threshold.
     """
-    def __init__(self, ID, identity, rng=None):
+    def __init__(self, ID, identity, rng=None, persona=None):
         """
         Initialize the agent.
 
@@ -27,28 +27,38 @@ class Agent:
         self.activation_state = False
         self._next_last_tweet: str  = "NO_TWEET"
         self.response_threshold = rng.random() if rng else np.random.random()
+        self.persona = persona
 
         # Additional attributes for LLM interaction
         self.rng = rng if rng else np.random.default_rng()
         self._base_seed = int(self.rng.integers(0, 2**31 - 1))
-        self._torch_gen = None  # will be created on first use
+        # self._torch_gen = None  # will be created on first use
         self._force_active = False
         self.tweethistory = []
         self.last_tweet: str | None = None
         self._next_activation_state = False 
 
 
-    # helper function to seed
-    def _ensure_torch_gen(self, llm_pipe):
-        """Create (or reuse) a persistent per-agent torch.Generator on the right device."""
-        dev = llm_pipe.model.device
-        if self._torch_gen is None or str(self._torch_gen.device) != str(dev):
-            self._torch_gen = torch.Generator(device=dev).manual_seed(self._base_seed)
-        return self._torch_gen
+    def persona_prompt(self):
+        if self.persona is None:
+            return "You have no specific persona."
+        p = self.persona
+
+        hobbies = ", ".join(p["hobbies"][:5]) if p["hobbies"] else "no particular hobbies"
+        skills = ", ".join(p["skills"][:5]) if p["skills"] else "no specific skills"
+
+        # combine the free-text persona + structured info
+        base = f"You are {p['name']}, {p['persona_text'].rstrip()}. "
+        extra = (
+            f"You are {p['age']} years old, gender: {p['sex']},"
+            f"Marital status: {p['marital_status']}, living in {p['city']}. "
+            f"worklife: {p['occupation'].replace('_', ' ')}. "
+            f"your hobbies include {hobbies}, and your key skills are {skills}."
+        )
+        return base + extra
     
     def build_tweet_prompt(self, tokenizer, identity, round_idx, neighbor_pairs, max_chars=240, force_active=False):
         # neighbor_pairs: list of (neighbor_id, last_text)
-
         # own history block
         own_block = "" 
         if len(self.tweethistory) == 0:
@@ -73,7 +83,7 @@ class Agent:
                        "Do not add anything else, do not explain.\n\n"
                        )
             user = (
-                f"Identity: {identity}\n"
+                f"Identity: {self.persona_prompt()}\n"
                 f"Round: {round_idx}\n"
                 f"Your previous tweets:\n{own_block}\n"
             )
@@ -82,31 +92,27 @@ class Agent:
         else:
             system = (f"You are a social media user {identity}.\n"
             "You are given a short list of neighbor tweets (in case they have tweeted).\n"
-            "Think of an interesting short tweet to post.\n"
+            "Read the neighbor tweets and think of an interesting short tweet to post.\n"
             "Decide whether to post a short new tweet (<= " f"{max_chars} chars).\n"
             "REPLY FORMAT (exactly):\n"
             "If you want to tweet, reply with: TWEET: <your tweet text>\n" 
             "If you don't want to tweet, reply with: NO_TWEET\n"
             "Do not add anything else, do not explain.\n\n")
             
-
             user = (
-                f"Identity: {identity}\n"
+                f"Identity: {self.persona_prompt()}\n"
                 f"Round: {round_idx}\n"
                 f"Neighbor tweets:\n{neighbor_block}\n"
                 f"Your previous tweets:\n{own_block}\n"
             )
 
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        # One message per neighbor (clear separation)
-        for nid, txt in neighbor_pairs:
-            messages.append({"role": "user", "content": f"Neighbor {nid} tweeted:\n{txt}"})
+        
+        # print("PROMPT MESSAGES: ", messages)
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
     
-    
-
     def step_llm_tweet(self, tokenizer, round_idx:int, max_chars = 240, force_active=False):
         """
         Use the LLM to decide whether to tweet or not.
@@ -118,18 +124,18 @@ class Agent:
             bool: Whether the agent decided to tweet or not.
         """
         neighbor_msgs = []
+        activated_neighbors = self.respond()
 
-        
-
-        activated, activated_neighbors = self.respond()
-        # if force_active:
-        #     activated = Trues
-
+        # gather neighbor tweets
         for n in activated_neighbors:
             if n.activation_state and n.last_tweet:
                 neighbor_msgs.append((n.ID, n.last_tweet))
         neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
+
+        # force tweet if needed
         self._force_active = force_active
+
+        # create prompt
         prompt = self.build_tweet_prompt(
             tokenizer, self.ID, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
         )
@@ -137,11 +143,12 @@ class Agent:
         return prompt
     
     def send_tweet(self, max_chars, raw_tweet):
-        # gen = self._ensure_torch_gen(llm_pipe)
-        # if gen is None:
-            # raise ValueError("Torch generator not initialized properly.")
-        
-        
+        '''
+        Process the raw tweet output from the LLM and update the agent's next tweet and activation  state.
+        Args:
+            max_chars (int): The maximum number of characters for the tweet.
+            raw_tweet (str): The raw tweet output from the LLM.
+        '''
         if self._force_active:
             print (f"Agent {self.ID} FORCED TWEET OUTPUT: {raw_tweet}")
 
@@ -153,10 +160,10 @@ class Agent:
             self._next_last_tweet = tweet
             self._next_activation_state = True
         else:
+            # if formatted incorrectly or NO_TWEET, send out NO_TWEET
             self._next_last_tweet = "NO_TWEET"
             self._next_activation_state = False
         
-
     # Finalize the activation state for this step
     def commit(self):
         """
@@ -197,38 +204,20 @@ class Agent:
         # fallback: if any non-empty content, treat as tweet
         return (len(t) > 0), t
         
-    def respond(self) -> (bool, set):
+    def respond(self) -> set:
         """
-        respond to the news intensity and returns False if the activation state did not change, True otherwise.
-
-        Args:
-            intensity (float): The intensity of the news.
-            analyze (bool): Whether to analyze the cascade or not.
+        Determine which connected agents are activated (sent out tweet).
         
         Returns:
-            bool: True if the activation state changed, False otherwise.
             set: The set of agents that should be activated
         """
-        neighbors_activated = 0
         actually_activated = []
-        new_activation_state = False
-
 
         if len(self.agent_connections) > 0:
             actually_activated = [agent for agent in self.agent_connections if agent.activation_state] 
-            neighbors_activated = len(actually_activated)
-            fraction_activated = neighbors_activated/len(self.agent_connections)
-        else:
-            fraction_activated = 0
-        new_activation_state = fraction_activated > self.response_threshold
-
-        # FOR NOW, IGNORE THE THRESHOLD AND JUST ACTIVATE IF ANY NEIGHBORS ARE ACTIVE
-        # if new_activation_state:
-            # return True, set(actually_activated)
-        
-        return True, sorted(actually_activated, key=lambda a: a.ID)
-
-        return False, []
+   
+        # sort by ID for consistency
+        return sorted(actually_activated, key=lambda a: a.ID)
 
     def add_edge(self, agent):
         """

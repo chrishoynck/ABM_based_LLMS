@@ -12,7 +12,7 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, mean=0, starting_distribution=0.5, directed=False, seed=None):
+    def __init__(self, num_agents=200, mean=0, starting_distribution=0.5, directed=False, seed=None, personas = None):
         """
         Initialize the network with a specified number of agents, mean, correlation, starting distribution, update fraction, and seed.
 
@@ -45,8 +45,11 @@ class _Network:
         self.new_edge = []
         self.removed_edge = []
 
-        self.agentsD = [Agent(i, "D", rng=np.random.default_rng(seed + i)) for i in range(int(num_agents * starting_distribution))]
-        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=np.random.default_rng(seed + i + len(self.agentsD))) for i in range(int(num_agents * (1 - starting_distribution)))]
+        personas = self.rng.permutation(personas) if personas is not None else [None]*num_agents
+
+        # create agents
+        self.agentsD = [Agent(i, "D", rng=np.random.default_rng(seed + i), persona=personas[i]) for i in range(int(num_agents * starting_distribution))]
+        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=np.random.default_rng(seed + i + len(self.agentsD)), persona = personas[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
       
@@ -107,7 +110,7 @@ class _Network:
         """
         self.iterations +=1
         prompts = []
-        batch_size = 64
+        batch_size = 8
         agents_w_prompt = []
         # force tweets for first round
         if self.iterations == 1: # or len(self.activated) == 0:
@@ -136,14 +139,6 @@ class _Network:
 
         # generate outputs in parallel
         if prompts:
-        #     out = pipe(
-        #     prompts,
-        #     do_sample=True,
-        #     temperature=0.8,
-        #     top_p=0.95,
-        #     max_new_tokens=256,
-        #     kwargs={"generator": self._torch_gen},
-        # )
             gen_kwargs = dict(
             do_sample=True,
             temperature=0.8,
@@ -161,8 +156,6 @@ class _Network:
         # state update after all agents have decided
         for agent in self.all_agents:
             agent.commit()
-            
-        # self.activated = set()
         
 class RandomNetwork(_Network):
     """
