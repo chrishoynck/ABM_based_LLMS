@@ -5,7 +5,7 @@ import sys, argparse
 import inspect
 # from src.classes.agent import Agent
 import utils.metrics as metrics
-from src.classes.network import RandomNetwork, ScaleFreeNetwork
+from classes.network import RandomNetwork, ScaleFreeNetwork
 import utils.load_personas as lp
 import utils.visualization as vis
 
@@ -16,6 +16,7 @@ import utils.visualization as vis
 
 print(torch.cuda.is_available())
 llama_model= "meta-llama/Llama-3.2-1B-Instruct"
+
 # when setting possible enironment variables in the future
 MODEL_ID = os.environ.get("LLAMA_ID", llama_model)
 CACHE_DIR = os.environ.get("TRANSFORMERS_CACHE", None)
@@ -56,6 +57,7 @@ def build_network(args, personas):
             starting_distribution=args.starting_distribution,
             seed=args.seed,
             personas=personas,
+            
         )
     else:
         return RandomNetwork(
@@ -85,48 +87,81 @@ def generate_parser():
 
     return parser.parse_args()
 
-if __name__ == "__main__":
-    
+def run_simulation(
+    net="sf",
+    rounds=10,
+    num_agents=10,
+    seed=42,
+    mean=0.0,
+    starting_distribution=0.5,
+    m=2,
+    p=0.5,
+    k=0):
+
+    """Run the simulation and return the network + tweet history."""
+    set_seed(SEED)     
     print(type(pipe.model))
     print("GENERATOR: ", inspect.signature(pipe.model.generate))
 
-    # parse arguments and build network
-    args = generate_parser()
-    
+    # build an argparse-like namespace
+    args = argparse.Namespace(
+        net=net,
+        rounds=rounds,
+        num_agents=num_agents,
+        seed=seed,
+        mean=mean,
+        starting_distribution=starting_distribution,
+        m=m,
+        p=p,
+        k=k,
+    )
 
+    n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
     network = build_network(args, personas=personas)
 
-    # update network for a given amount of rounds (agents send out tweets)
+    # update network
     for r in range(args.rounds):
-        network.update_round(tokenizer, pipe)
-        if r%10 == 0:
+        network.update_round(tokenizer, pipe, n_grams=n_grams)
+        if r % 10 == 0:
             print(f"finished round {r}")
+
     tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
-    # print tweet histories
-    for agent_id, hist in tweet_history:
-        print(f"Agent {agent_id}: {hist}")
-        print("\n")
+    return network, tweet_history
 
-    n=10
-    distorted_language, highest_frac = metrics.analyze_distorted_language(
-        network,
-        ngrams_file="data/distorted_language_ngrams.tsv",
-        skip_header=True,
-        n=n,
-        column_idx=0,
+
+if __name__ == "__main__":
+    # keep CLI behavior
+    args = generate_parser()
+
+    network, tweet_history = run_simulation(
+        net=args.net,
+        rounds=args.rounds,
+        num_agents=args.num_agents,
+        seed=args.seed,
+        mean=args.mean,
+        starting_distribution=args.starting_distribution,
+        m=args.m,
+        p=args.p,
+        k=args.k,
     )
 
-    # Print the results
-    for agent_id, met in distorted_language.items():
-        print(f"Agent {agent_id}:")
-        print(f"  First {n} tweets: {met['first_n']} distorted")
-        print(f"  Last {n} tweets: {met['last_n']} distorted")
-        print(f"  Total tweets: {met['total_tweets']}")
-        print("  Fraction distorted in first tweets: {:.2f}".format(met['frac_distorted_first']))
-        print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
-        print("\n")
+    # print tweet histories (optional)
+    for agent_id, hist in tweet_history:
+        print(f"Agent {agent_id}: {hist}\n")
+    
+    vis.distorted_info(network.cds_info)
 
-    wat = vis.print_network(network)
+    
+    # Print the results
+    # for agent_id, met in distorted_language.items():
+    #     print(f"Agent {agent_id}:")
+    #     print(f"  First {n} tweets: {met['first_n']} distorted")
+    #     print(f"  Last {n} tweets: {met['last_n']} distorted")
+    #     print(f"  Total tweets: {met['total_tweets']}")
+    #     print("  Fraction distorted in first tweets: {:.2f}".format(met['frac_distorted_first']))
+    #     print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
+    #     print("\n")
+
 

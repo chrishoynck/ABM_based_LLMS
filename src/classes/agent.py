@@ -1,5 +1,5 @@
 import numpy as np
-
+import utils.metrics as metrics
 class Agent:
     """
     A agent in the network, with a unique ID and a response threshold.
@@ -31,12 +31,17 @@ class Agent:
 
         # Additional attributes for LLM interaction
         self.rng = rng if rng else np.random.default_rng()
-        self._base_seed = int(self.rng.integers(0, 2**31 - 1))
-        # self._torch_gen = None  # will be created on first use
+
         self._force_active = False
         self.tweethistory = []
+        
+
         self.last_tweet: str | None = None
         self._next_activation_state = False 
+
+        self.distorted_tweets = []
+        self.active_tweethistory = []
+        self.frac_distorted_neigh = 0
 
 
     def persona_prompt(self):
@@ -125,12 +130,20 @@ class Agent:
         """
         neighbor_msgs = []
         activated_neighbors = self.respond()
+        distorted_neigh = 0
 
         # gather neighbor tweets
         for n in activated_neighbors:
             if n.activation_state and n.last_tweet:
                 neighbor_msgs.append((n.ID, n.last_tweet))
-        neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
+                if n.distorted_tweets[-1]:
+                    distorted_neigh +=1
+        
+        if len(activated_neighbors) > 0:
+            self.frac_distorted_neigh = distorted_neigh/len(activated_neighbors)
+        else:
+            self.frac_distorted_neigh = 0
+        # neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
 
         # force tweet if needed
         self._force_active = force_active
@@ -154,22 +167,34 @@ class Agent:
 
         do_tweet, tweet = self.parse_tweet_decision(raw_tweet)
         if do_tweet:
+            # prepare tweet and set next activations
             tweet = tweet.strip()
             if len(tweet) > max_chars:
                 tweet = tweet[:max_chars]
             self._next_last_tweet = tweet
             self._next_activation_state = True
+
         else:
             # if formatted incorrectly or NO_TWEET, send out NO_TWEET
             self._next_last_tweet = "NO_TWEET"
             self._next_activation_state = False
         
     # Finalize the activation state for this step
-    def commit(self):
+    def commit(self, n_grams):
         """
         Commit the next activation state and last tweet.
         S.T all updates happen simultaneously after all agents have decided.
         """       
+        tweetje = self._next_last_tweet
+        if  self._next_activation_state:
+
+            # update distortion metrics
+            distorted = metrics.contains_ngram(tweetje, ngrams=n_grams)
+            self.distorted_tweets.append(distorted)
+            self.distorted_tweets = self.distorted_tweets[-5:]
+            self.active_tweethistory.append(tweetje)
+            self.active_tweethistory = self.active_tweethistory[-5:]
+
         self.tweethistory.append(self._next_last_tweet)
         self.last_tweet = self._next_last_tweet
         self.activation_state = self._next_activation_state
@@ -201,6 +226,7 @@ class Agent:
         idx = low.find("tweet:")
         if idx != -1:
             return True, t[idx:].strip()
+        
         # fallback: if any non-empty content, treat as tweet
         return (len(t) > 0), t
         

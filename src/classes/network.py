@@ -1,5 +1,5 @@
 import numpy as np, torch
-from src.classes.agent import Agent
+from classes.agent import Agent
 from scipy import stats
 # from powerlaw import Fit
 import bisect
@@ -32,7 +32,6 @@ class _Network:
             connections (set): The set of connections between agents.
             all_agents (list): The list of all agents in the network.
         """
-
         self.iterations = 0
         self.mean = mean
         self.activated = set()
@@ -52,6 +51,8 @@ class _Network:
         self.agentsH = [Agent(i + len(self.agentsD), "H", rng=np.random.default_rng(seed + i + len(self.agentsD)), persona = personas[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
+
+        self.cds_info = []
       
     def clean_network(self):
         """
@@ -104,7 +105,7 @@ class _Network:
             all_outputs.extend(batch_outputs)
         return all_outputs
     
-    def update_round(self, tokenizer, pipe, update_fraction=0.5):
+    def update_round(self, tokenizer, pipe, update_fraction=0.5, n_grams=[]):
         """
         Update the network for one round by responding to news intensities and adjusting the network accordingly.
         """
@@ -145,7 +146,6 @@ class _Network:
             top_p=0.95,
             max_new_tokens=256,
             kwargs={"generator": self._torch_gen},
-            # generator=self.torch_gen,  # if you use a torch.Generator
             )
             out = self.inference_w_batches(pipe, prompts, batch_size=batch_size, **gen_kwargs)
         
@@ -153,9 +153,12 @@ class _Network:
         for agent, tweet in zip(agents_w_prompt, out):
             agent.send_tweet(max_chars =240, raw_tweet = tweet[0]["generated_text"].strip())
         
+        # self.cds_info = []
         # state update after all agents have decided
         for agent in self.all_agents:
-            agent.commit()
+            agent.commit(n_grams=n_grams)
+            self.cds_info.append((agent.frac_distorted_neigh,  agent.activation_state))
+
         
 class RandomNetwork(_Network):
     """

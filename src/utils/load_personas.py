@@ -38,11 +38,11 @@ columns_keep = ['persona', 'age', 'marital_status', 'hobbies_and_interests_list'
 if "personas_10k.csv" not in os.listdir("data/") or NEW:
     df.to_csv("data/personas_10k.csv", columns=columns_keep, index=False)
 df = pd.read_csv("data/personas_10k.csv")
-print(df.head())
-print (df.iloc[0]['age'])
-print(df.iloc[0]['persona'])
-print(df.iloc[0]['hobbies_and_interests_list'])
-print(df.columns)
+# print(df.head())
+# print (df.iloc[0]['age'])
+# print(df.iloc[0]['persona'])
+# print(df.iloc[0]['hobbies_and_interests_list'])
+# print(df.columns)
 
 def parse_list_field(v):
     if pd.isna(v):
