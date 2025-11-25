@@ -7,13 +7,12 @@ class Agent:
     The agent can be in one of two states: activated or not activated.
     The agent can also be a sampler, which means that it will always respond to a piece of news, regardless of the response threshold.
     """
-    def __init__(self, ID, identity, rng=None, persona=None):
+    def __init__(self, ID, rng=None, persona=None):
         """
         Initialize the agent.
 
         Args:
             ID (int): The unique ID of the agent.
-            identity (str): The identity of the agent (either "L" or "R").
             rng (np.random.Generator, optional): The random number generator to use. Defaults to None.
         
         Attributes:
@@ -22,11 +21,11 @@ class Agent:
             agent_connections (set): The set of agents that the agent is connected to.
         """
         self.ID = ID
-        self.identity: str = identity
+        # self.identity: str = identity
         self.agent_connections = set()
         self.activation_state = False
         self._next_last_tweet: str  = "NO_TWEET"
-        self.response_threshold = rng.random() if rng else np.random.random()
+        # self.response_threshold = rng.random() if rng else np.random.random()
         self.persona = persona
 
         # Additional attributes for LLM interaction
@@ -62,7 +61,7 @@ class Agent:
         )
         return base + extra
     
-    def build_tweet_prompt(self, tokenizer, identity, round_idx, neighbor_pairs, max_chars=240, force_active=False):
+    def build_tweet_prompt(self, tokenizer, round_idx, neighbor_pairs, max_chars=240, force_active=False):
         # neighbor_pairs: list of (neighbor_id, last_text)
         # own history block
         own_block = "" 
@@ -78,7 +77,7 @@ class Agent:
 
         # agents are asked to tweet
         if force_active:
-            system = (f"You are a social media user {identity}.\n"
+            system = (f"You are a social media user {self.ID}.\n"
                        "Think of an interesting short tweet to post.\n"
                        "You must post a short tweet (<= " f"{max_chars} chars).\n"
                        "POST FORMAT (exactly):\n"
@@ -95,7 +94,7 @@ class Agent:
             
         # The agents may decide not to tweet
         else:
-            system = (f"You are a social media user {identity}.\n"
+            system = (f"You are a social media user {self.ID}.\n"
             "You are given a short list of neighbor tweets (in case they have tweeted).\n"
             "Read the neighbor tweets and think of an interesting short tweet to post.\n"
             "Decide whether to post a short new tweet (<= " f"{max_chars} chars).\n"
@@ -150,7 +149,7 @@ class Agent:
 
         # create prompt
         prompt = self.build_tweet_prompt(
-            tokenizer, self.ID, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
+            tokenizer, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
         )
 
         return prompt
@@ -280,11 +279,11 @@ class Agent:
         Returns:
             int: The hash of the agent.
         """
-        return hash((self.ID, self.identity)) 
+        return hash((self.ID, self.persona['name'] if self.persona else None)) 
 
     def __eq__(self, other):
         """
         Check if the agent is equal to another agent.
         """
-        return isinstance(other, Agent) and self.ID == other.ID and self.identity == other.identity
+        return isinstance(other, Agent) and self.ID == other.ID 
 

@@ -12,13 +12,12 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, mean=0, starting_distribution=0.5, directed=False, seed=None, personas = None):
+    def __init__(self, num_agents=200, starting_distribution=0.5, directed=False, seed=None, personas = None):
         """
         Initialize the network with a specified number of agents, mean, correlation, starting distribution, update fraction, and seed.
 
         Args:
             num_agents (int): The number of agents in the network.
-            mean (float): The mean of the news intensities.
             starting_distribution (float): The starting distribution of the agents.
             seed (int): The seed for the random number generator.
 
@@ -33,7 +32,6 @@ class _Network:
             all_agents (list): The list of all agents in the network.
         """
         self.iterations = 0
-        self.mean = mean
         self.activated = set()
         self.directed = directed
 
@@ -47,12 +45,13 @@ class _Network:
         personas = self.rng.permutation(personas) if personas is not None else [None]*num_agents
 
         # create agents
-        self.agentsD = [Agent(i, "D", rng=np.random.default_rng(seed + i), persona=personas[i]) for i in range(int(num_agents * starting_distribution))]
-        self.agentsH = [Agent(i + len(self.agentsD), "H", rng=np.random.default_rng(seed + i + len(self.agentsD)), persona = personas[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
+        self.agentsD = [Agent(i, rng=np.random.default_rng(seed + i), persona=personas[i]) for i in range(int(num_agents * starting_distribution))]
+        self.agentsH = [Agent(i + len(self.agentsD), rng=np.random.default_rng(seed + i + len(self.agentsD)), persona = personas[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
 
         self.cds_info = []
+        self.agent_w_highest_deg = self.all_agents[0] # placeholder
       
     def clean_network(self):
         """
@@ -105,7 +104,7 @@ class _Network:
             all_outputs.extend(batch_outputs)
         return all_outputs
     
-    def update_round(self, tokenizer, pipe, update_fraction=0.5, n_grams=[]):
+    def update_round(self, tokenizer, pipe, update_fraction=0.5, n_grams=[], distorted_tweets=[]):
         """
         Update the network for one round by responding to news intensities and adjusting the network accordingly.
         """
@@ -151,13 +150,34 @@ class _Network:
         
         # agents send out their tweets
         for agent, tweet in zip(agents_w_prompt, out):
-            agent.send_tweet(max_chars =240, raw_tweet = tweet[0]["generated_text"].strip())
+            if len(distorted_tweets)!=0 and agent == self.agent_w_highest_deg:
+                    if self.iterations == 0:
+                        print ("Agent with highest degree is tweeting distorted tweet")
+                    agent.send_tweet(max_chars =240, raw_tweet = distorted_tweets[self.iterations % len(distorted_tweets)])
+            else:
+                agent.send_tweet(max_chars =240, raw_tweet = tweet[0]["generated_text"].strip())
         
         # self.cds_info = []
         # state update after all agents have decided
+
+        distorted_fracs = []
         for agent in self.all_agents:
             agent.commit(n_grams=n_grams)
             self.cds_info.append((agent.frac_distorted_neigh,  agent.activation_state))
+            # this agent always sends out distorted tweets
+            if agent != self.agent_w_highest_deg:
+                if len(agent.distorted_tweets) > 0: 
+                    
+                    # running window over last 5 tweets
+                    distorted_fracs.append(np.sum(agent.distorted_tweets)/len(agent.distorted_tweets))
+                    assert distorted_fracs[-1] <= 1, "error in distorted frac calculation"
+                else:
+                    distorted_fracs.append(0)
+        
+        if len(distorted_fracs) == 0:
+            print("no distorted fracs recorded, returning 0")
+            return 0
+        return np.mean(distorted_fracs)  
 
         
 class RandomNetwork(_Network):
@@ -214,6 +234,7 @@ class RandomNetwork(_Network):
                     if agent1 != agent2 and (agent2 not in agent1.agent_connections):
                         if self.rng.random() < self.p:
                             self.add_connection(agent1, agent2)
+        self.agent_w_highest_deg = max(self.all_agents, key=lambda a: len(a.agent_connections))
 
     def network_adjustment(self, sL, sR):
         """
@@ -357,6 +378,7 @@ class ScaleFreeNetwork(_Network):
             f"Some later added agents have degree less than m={self.m}. Check initialization logic."
         )
 
+        self.agent_w_highest_deg = max(self.all_agents, key=lambda a: len(a.agent_connections))
         # # Step 4: Verify the scale-free properties
         # self.verify_scale_free_distribution(self.plot)
 

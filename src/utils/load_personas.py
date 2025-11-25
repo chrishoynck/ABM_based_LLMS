@@ -31,18 +31,14 @@ def age_of_person(row):
     else:
         return True
     
-df = df.applymap(_clip_cell)
+df = df.map(_clip_cell)
 df = df[df.apply(age_of_person, axis=1)]
 columns_keep = ['persona', 'age', 'marital_status', 'hobbies_and_interests_list', 'skills_and_expertise_list','sex','bachelors_field', 'occupation', 'city' ]
 
 if "personas_10k.csv" not in os.listdir("data/") or NEW:
     df.to_csv("data/personas_10k.csv", columns=columns_keep, index=False)
 df = pd.read_csv("data/personas_10k.csv")
-# print(df.head())
-# print (df.iloc[0]['age'])
-# print(df.iloc[0]['persona'])
-# print(df.iloc[0]['hobbies_and_interests_list'])
-# print(df.columns)
+
 
 def parse_list_field(v):
     if pd.isna(v):
@@ -56,6 +52,7 @@ def parse_list_field(v):
             pass
     # fallback: comma-separated
     return [x.strip() for x in v.split(",") if x.strip()]
+
 def extract_name(persona_text):
     parts = persona_text.strip().split()
     return " ".join(parts[:2])  # first two words
@@ -73,6 +70,11 @@ def row_to_persona(row):
         "hobbies": parse_list_field(row["hobbies_and_interests_list"]),
         "skills": parse_list_field(row["skills_and_expertise_list"]),
     }
+
+def load_distorted_tweets(filepath="data/distorted_tweets.csv", numtweets=1000, seed=42):
+    df = pd.read_csv(filepath)
+    df_sampled = df.sample(n=numtweets, replace=True, random_state=seed)
+    return df_sampled['tweet'].tolist()
 
 def load_personas_from_file(filepath="data/personas_10k.csv", personass_to_load=10, seed=42):
     df = pd.read_csv(filepath)

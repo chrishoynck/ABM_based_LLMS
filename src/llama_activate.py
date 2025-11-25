@@ -8,6 +8,7 @@ import utils.metrics as metrics
 from classes.network import RandomNetwork, ScaleFreeNetwork
 import utils.load_personas as lp
 import utils.visualization as vis
+import utils.reading_in as ri
 
 ######################################################################
 ### Llama 2 Setup
@@ -53,7 +54,6 @@ def build_network(args, personas):
         return ScaleFreeNetwork(
             m=args.m,
             num_agents=args.num_agents,
-            mean=args.mean,
             starting_distribution=args.starting_distribution,
             seed=args.seed,
             personas=personas,
@@ -64,7 +64,6 @@ def build_network(args, personas):
             p=args.p,
             k=args.k,
             num_agents=args.num_agents,
-            mean=args.mean,
             starting_distribution=args.starting_distribution,
             seed=args.seed,
             personas=personas,
@@ -77,7 +76,6 @@ def generate_parser():
     parser.add_argument("--rounds", type=int, default=10, help="Number of update rounds")
     parser.add_argument("--num_agents", type=int, default=10, help="Total number of agents")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--mean", type=float, default=0.0, help="Mean (passed to network)")
     parser.add_argument("--starting_distribution", type=float, default=0.5, help="Fraction of D vs H agents")
     # Scale-free specific
     parser.add_argument("--m", type=int, default=2, help="Edges per new node (scale-free)")
@@ -87,12 +85,24 @@ def generate_parser():
 
     return parser.parse_args()
 
+def update_network(network, running_fracs = [], rounds=1, seed=42):
+    """Update the network for one round and return the mean fraction of distorted tweets."""
+
+    n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
+    distorted_tweets = lp.load_distorted_tweets("data/distorted_tweets.csv", numtweets=1000, seed=seed)
+    for _ in range(rounds):
+        mean_running_frac = network.update_round(tokenizer, pipe, n_grams=n_grams, distorted_tweets=distorted_tweets)
+        print(f"Round {network.iterations}: Mean fraction of distorted tweets (all agents): {mean_running_frac:.4f}")
+        running_fracs.append(mean_running_frac)
+        if network.iterations % 10 == 0:
+            print(f"finished round {network.iterations}")
+    return running_fracs, network
+
 def run_simulation(
     net="sf",
     rounds=10,
     num_agents=10,
     seed=42,
-    mean=0.0,
     starting_distribution=0.5,
     m=2,
     p=0.5,
@@ -109,59 +119,53 @@ def run_simulation(
         rounds=rounds,
         num_agents=num_agents,
         seed=seed,
-        mean=mean,
         starting_distribution=starting_distribution,
         m=m,
         p=p,
         k=k,
     )
-
-    n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
     network = build_network(args, personas=personas)
-
-    # update network
-    for r in range(args.rounds):
-        network.update_round(tokenizer, pipe, n_grams=n_grams)
-        if r % 10 == 0:
-            print(f"finished round {r}")
-
+    running_fracs, network = update_network(network, running_fracs=[], rounds=args.rounds, seed=args.seed)
     tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
-    return network, tweet_history
-
+    return network, tweet_history, running_fracs
 
 if __name__ == "__main__":
     # keep CLI behavior
     args = generate_parser()
 
-    network, tweet_history = run_simulation(
+    network, tweet_history, running_fracs = run_simulation(
         net=args.net,
         rounds=args.rounds,
         num_agents=args.num_agents,
         seed=args.seed,
-        mean=args.mean,
         starting_distribution=args.starting_distribution,
         m=args.m,
         p=args.p,
         k=args.k,
     )
+    # return output file the network is printed to
+    file_output_path = ri.read_out_network_properties(network, args.seed, running_fracs)
+    print(f"Network properties saved to {file_output_path}")
 
+    # reload network from saved properties
+    network, distorted_fracs = ri.generate_network(file_output_path, pipe, starting_distribution=0.5)
+    running_fracs, network = update_network(network, running_fracs=distorted_fracs, rounds=args.rounds, seed=args.seed)
+    tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
+
+    file_output_path = ri.read_out_network_properties(network, args.seed, running_fracs)
+    print(f"Network properties saved to {file_output_path}")
+
+
+    # network.
     # print tweet histories (optional)
     for agent_id, hist in tweet_history:
         print(f"Agent {agent_id}: {hist}\n")
     
     vis.distorted_info(network.cds_info)
+    vis.plot_running_fracs(running_fracs)
 
     
-    # Print the results
-    # for agent_id, met in distorted_language.items():
-    #     print(f"Agent {agent_id}:")
-    #     print(f"  First {n} tweets: {met['first_n']} distorted")
-    #     print(f"  Last {n} tweets: {met['last_n']} distorted")
-    #     print(f"  Total tweets: {met['total_tweets']}")
-    #     print("  Fraction distorted in first tweets: {:.2f}".format(met['frac_distorted_first']))
-    #     print("  Fraction distorted in last tweets: {:.2f}".format(met['frac_distorted_last']))
-    #     print("\n")
 
 

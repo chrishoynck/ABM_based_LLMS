@@ -66,7 +66,19 @@ def distorted_info(cds_info):
     plt.ylim(0, 1)
     plt.grid(alpha=0.3, axis="y")
     plt.show()
-        
+
+def plot_running_fracs(running_fracs):
+    '''
+    This function plots the running mean fraction of distorted tweets over rounds.
+    Args:
+        running_fracs(List(Float)): List of running mean fractions over rounds
+    '''
+    plt.plot(running_fracs, marker='o')
+    plt.xlabel("Round")
+    plt.ylabel("Mean fraction of distorted active tweets (all agents)")
+    plt.ylim(0, 1)
+    plt.grid(alpha=0.3)
+    plt.show()
 
 
 
