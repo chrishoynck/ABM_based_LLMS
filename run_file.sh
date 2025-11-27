@@ -1,0 +1,1 @@
+python src/llama_activate.py sf --rounds 10 --num_agents 5 --p 0.3

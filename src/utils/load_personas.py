@@ -76,6 +76,10 @@ def load_distorted_tweets(filepath="data/distorted_tweets.csv", numtweets=1000, 
     df_sampled = df.sample(n=numtweets, replace=True, random_state=seed)
     return df_sampled['tweet'].tolist()
 
+def load_depressed_personas(filepath="data/depressed.csv", personass_to_load=1, seed=42):
+    df = pd.read_csv(filepath)
+    return [row_to_persona(row) for _, row in df.sample(n=personass_to_load, replace=True, random_state=seed).iterrows()]
+
 def load_personas_from_file(filepath="data/personas_10k.csv", personass_to_load=10, seed=42):
     df = pd.read_csv(filepath)
     return [row_to_persona(row) for _, row in df.sample(n=personass_to_load, replace=False, random_state=seed).iterrows()]

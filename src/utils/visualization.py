@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -67,7 +68,39 @@ def distorted_info(cds_info):
     plt.grid(alpha=0.3, axis="y")
     plt.show()
 
-def plot_running_fracs(running_fracs):
+def plot_distorted_fracs(frac_distorted_this_step, m=0, p=0.0, enforced_ngrams=False, depressed=False, type_nn='rand'):
+    '''
+    This function plots the fraction of distorted tweets per round.
+    Args:
+        distorted_fracs(List(Float)): List of CDS fractions per round
+    '''
+    plt.plot(frac_distorted_this_step, marker='o', markersize=2)
+    plt.xlabel("Round")
+    plt.ylabel("Fraction of distorted tweets")
+    plt.ylim(0, 1)
+    plt.grid(alpha=0.3)
+
+    if enforced_ngrams:
+        setting = "enforced_ngrams"
+    elif depressed:
+        setting = "depressed"
+    else:
+        setting = "basis"
+
+    if type_nn == 'sf':
+        parameter = f'{m}'
+    else:
+        parameter = f'{str(p).replace(".", "")}'
+
+    path = f"plots/{setting}/{type_nn}/{parameter}"
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    plt.savefig(f"{path}/distorted_step_fracs.png", dpi=300)
+    plt.show()
+
+
+def plot_running_fracs(running_fracs, m=0, p=0.0, enforced_ngrams=False, depressed=False, type_nn='rand'):
     '''
     This function plots the running mean fraction of distorted tweets over rounds.
     Args:
@@ -78,6 +111,24 @@ def plot_running_fracs(running_fracs):
     plt.ylabel("Mean fraction of distorted active tweets (all agents)")
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
+
+    if enforced_ngrams:
+        setting = "enforced_ngrams"
+    elif depressed:
+        setting = "depressed"
+    else:
+        setting = "basis"
+
+    if type_nn == 'sf':
+        parameter = f'{m}'
+    else:
+        parameter = f'{str(p).replace(".", "")}'
+
+    path = f"plots/{setting}/{type_nn}/{parameter}"
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    plt.savefig(f"{path}/running_fracs.png", dpi=300)
     plt.show()
 
 

@@ -112,6 +112,7 @@ class _Network:
         prompts = []
         batch_size = 8
         agents_w_prompt = []
+
         # force tweets for first round
         if self.iterations == 1: # or len(self.activated) == 0:
             for agent in self.all_agents:
@@ -151,7 +152,7 @@ class _Network:
         # agents send out their tweets
         for agent, tweet in zip(agents_w_prompt, out):
             if len(distorted_tweets)!=0 and agent == self.agent_w_highest_deg:
-                    if self.iterations == 0:
+                    if self.iterations == 1:
                         print ("Agent with highest degree is tweeting distorted tweet")
                     agent.send_tweet(max_chars =240, raw_tweet = distorted_tweets[self.iterations % len(distorted_tweets)])
             else:
@@ -159,15 +160,20 @@ class _Network:
         
         # self.cds_info = []
         # state update after all agents have decided
-
+        distorted_this_step = 0
         distorted_fracs = []
         for agent in self.all_agents:
             agent.commit(n_grams=n_grams)
             self.cds_info.append((agent.frac_distorted_neigh,  agent.activation_state))
             # this agent always sends out distorted tweets
-            if agent != self.agent_w_highest_deg:
+            if agent != self.agent_w_highest_deg or len(distorted_tweets) ==0:
                 if len(agent.distorted_tweets) > 0: 
-                    
+
+                    # compute distorted_tweetst this step
+                    if agent.activation_state and agent.distorted_tweets[-1]:
+                        assert agent.last_tweet != "NO_TWEET", "activated agent should have tweeted"
+                        distorted_this_step +=1
+
                     # running window over last 5 tweets
                     distorted_fracs.append(np.sum(agent.distorted_tweets)/len(agent.distorted_tweets))
                     assert distorted_fracs[-1] <= 1, "error in distorted frac calculation"
@@ -177,7 +183,7 @@ class _Network:
         if len(distorted_fracs) == 0:
             print("no distorted fracs recorded, returning 0")
             return 0
-        return np.mean(distorted_fracs)  
+        return np.mean(distorted_fracs), distorted_this_step / len(self.all_agents)
 
         
 class RandomNetwork(_Network):
@@ -186,7 +192,7 @@ class RandomNetwork(_Network):
     It inherits from the _Network class and initializes the network by connecting all agents with a probability `p`.
     """
 
-    def __init__(self, p=0.1, k=0, **kwargs):
+    def __init__(self, p=0.1, k=0, depressed_personas=None, **kwargs):
         """
         Initialize the network by connecting all agents with a probability `p`.
         If `p` is very low, the network will resemble a regular network with fixed degree `k`.
@@ -200,9 +206,9 @@ class RandomNetwork(_Network):
         self.p = p
         self.k = k
 
-        self.initialize_network()
+        self.initialize_network(depressed_personas=depressed_personas)
 
-    def initialize_network(self):
+    def initialize_network(self, depressed_personas=None):
         """
         Initialize the network
         """
@@ -235,6 +241,10 @@ class RandomNetwork(_Network):
                         if self.rng.random() < self.p:
                             self.add_connection(agent1, agent2)
         self.agent_w_highest_deg = max(self.all_agents, key=lambda a: len(a.agent_connections))
+        if depressed_personas is not None:
+            # currently one persona in data 
+            self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
+            print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
 
     def network_adjustment(self, sL, sR):
         """
@@ -291,7 +301,7 @@ class ScaleFreeNetwork(_Network):
     This class represents a scale-free network of agents.
     It inherits from the _Network class and initializes the network by connecting agents in a scale-free manner.
     """
-    def __init__(self, m=2, plot=False, **kwargs):
+    def __init__(self, m=2, plot=False, depressed_personas=None, **kwargs):
         """
         Initialize the network by connecting agents in a scale-free manner.
         The network is initialized with `m` connections for each new agent.
@@ -307,9 +317,9 @@ class ScaleFreeNetwork(_Network):
         self.total_degree = 0
         self.cumulative_degree_list = []
 
-        self.initialize_network()
+        self.initialize_network(depressed_personas=depressed_personas)
 
-    def initialize_network(self):
+    def initialize_network(self, depressed_personas=None):
         """
         1) Select m initial agents, fully connect them (seed network).
         2) For each remaining agent, connect it to m existing agents with probability
@@ -373,12 +383,16 @@ class ScaleFreeNetwork(_Network):
             # Add edges to the chosen agents
             for target_agent in chosen:
                 self.add_connection(new_agent, target_agent)
-
+        
         assert all(self.degree_distribution[agent] >= self.m for agent in remaining_agents), (
             f"Some later added agents have degree less than m={self.m}. Check initialization logic."
         )
 
         self.agent_w_highest_deg = max(self.all_agents, key=lambda a: len(a.agent_connections))
+        if depressed_personas is not None:
+            # currently one persona in data 
+            self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
+            print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
         # # Step 4: Verify the scale-free properties
         # self.verify_scale_free_distribution(self.plot)
 

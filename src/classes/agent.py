@@ -215,6 +215,8 @@ class Agent:
         """
         t = text.strip()
         low = t.lower()
+        low = low.replace("\\'", "'")
+        low = low.replace("\\n", " ")
 
         # all text that is not generated in proper format is treated as no tweet
         if "no_tweet" in low:
@@ -224,6 +226,7 @@ class Agent:
         # prefer the explicit "TWEET:" pattern
         idx = low.find("tweet:")
         if idx != -1:
+    
             return True, t[idx:].strip()
         
         # fallback: if any non-empty content, treat as tweet

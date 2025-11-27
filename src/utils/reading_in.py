@@ -1,12 +1,6 @@
 from classes.network import RandomNetwork, ScaleFreeNetwork
-import ast, torch
+import ast, torch, os
 import numpy as np
-# import pickle, base64
-
-# # helper to decode saved RNG state
-# def _decode_rng_state(encoded: str):
-#     raw = base64.b64decode(encoded.encode("ascii"))
-#     return pickle.loads(raw)
 
 def read_in_network_properties(file_path):
     properties = {}
@@ -67,7 +61,7 @@ def read_in_network_properties(file_path):
             properties[key] = value
     return properties
 
-def read_out_network_properties(network, seed, distorted_fracs):
+def read_out_network_properties(network, seed, distorted_fracs, enforce_ngrams = False, depressed = False):
     """
     Extracts and returns the properties of a network for analysis or storage.
     Supports RandomNetwork and ScaleFreeNetwork.
@@ -115,6 +109,8 @@ def read_out_network_properties(network, seed, distorted_fracs):
         "Agent_w_Highest_Deg": network.agent_w_highest_deg.ID,
     }
 
+
+
     # randomness:
     properties["Torch RNG State"] = network._torch_gen.get_state().tolist()
     properties["Network RNG State"] = network.rng.bit_generator.state
@@ -133,7 +129,25 @@ def read_out_network_properties(network, seed, distorted_fracs):
     else:
         print("Network should be either scale-free or random")
 
-    file_output_path = f"data/networks/network_properties_{seed}_{network_type}_{len(network.all_agents)}_{network.iterations}.txt"
+    # enforced n-grams dominates depressed
+    if enforce_ngrams:
+        state = "enforced_ngrams"
+    if depressed:
+        state = "depressed"
+    else:
+        state = "basis"
+    # save for scale free net
+    if network_type == "sf": 
+        if str(network.m) not in os.listdir(f"data/networks/{state}/sf"):
+            os.mkdir(f"data/networks/{state}/sf/{network.m}")
+        file_output_path = f"data/networks/{state}/sf/{network.m}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
+    
+    # save for random net
+    else:
+        if str(network.p).replace(".", "_") not in os.listdir(f"data/networks/{state}/rand"):
+            os.mkdir(f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}")
+        file_output_path = f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
+
     with open(file_output_path, "w", encoding="utf-8") as file:
         file.write("Network Properties\n")
         file.write("==================\n")
@@ -168,7 +182,7 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
     seed = props["Seed"]
     iterations = props["Iterations"]
 
-    # ---- 1. Instantiate the right network type (no correlations) ----
+    # Create right network type
     if "P value" in props:
         # RandomNetwork
         p = props["P value"]
@@ -187,9 +201,6 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
             starting_distribution=starting_distribution,
             seed=seed,
         )
-        # If you really care you could also restore these cached values:
-        # network.total_degree = props["Total Degree"]
-        # network.degree_distribution = props["Degree Distribution"]
     else:
         raise ValueError("Could not infer network type from properties file.")
 
@@ -209,7 +220,7 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
     # create a map to map index ot id, (currently index is same as id)
     id_to_agent = {agent.ID: agent for agent in network.all_agents}
 
-    # ---- 3. Restore agent-level state ----
+    # Restore agents
     # (agent_id, persona, activation_state,
     #  tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
     for (agent_id, persona, activation_state,
@@ -228,7 +239,7 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
         # rebuild degree distribution when adding connections
         network.degree_distribution[ag] = 0
 
-    # ---- 4. Restore connections ----
+    # Restore connections
     # Clear whatever constructor created
     network.connections = set()
 
