@@ -124,7 +124,7 @@ def plot_running_fracs(running_fracs, m=0, p=0.0, enforced_ngrams=False, depress
     else:
         parameter = f'{str(p).replace(".", "")}'
 
-    path = f"plots/{setting}/{type_nn}/{parameter}"
+    path = f"plots/networks/{setting}/{type_nn}/{parameter}"
     if not os.path.exists(path):
         os.makedirs(path)
 

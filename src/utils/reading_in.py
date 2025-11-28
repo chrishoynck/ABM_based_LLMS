@@ -18,7 +18,7 @@ def read_in_network_properties(file_path):
             properties[key] = float(value)
 
         # save distorted fracs as metric
-        elif key == "Distorted Frac":
+        elif key in ("Distorted Frac" , "Dist Step Frac"):
             # value = value.replace("nan", "0")
             distorted_fracs = ast.literal_eval(value)
             properties[key] = [float(f) for f in distorted_fracs]
@@ -61,7 +61,7 @@ def read_in_network_properties(file_path):
             properties[key] = value
     return properties
 
-def read_out_network_properties(network, seed, distorted_fracs, enforce_ngrams = False, depressed = False):
+def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, enforce_ngrams = False, depressed = False):
     """
     Extracts and returns the properties of a network for analysis or storage.
     Supports RandomNetwork and ScaleFreeNetwork.
@@ -105,6 +105,7 @@ def read_out_network_properties(network, seed, distorted_fracs, enforce_ngrams =
         "Agents": agent_info, 
         "Iterations": network.iterations,
         "Distorted Frac": [float(x) for x in distorted_fracs],
+        "Dist Step Frac": [float(x) for x in dist_per_step],
         "CDS Info": network.cds_info,
         "Agent_w_Highest_Deg": network.agent_w_highest_deg.ID,
     }
@@ -132,10 +133,11 @@ def read_out_network_properties(network, seed, distorted_fracs, enforce_ngrams =
     # enforced n-grams dominates depressed
     if enforce_ngrams:
         state = "enforced_ngrams"
-    if depressed:
+    elif depressed:
         state = "depressed"
     else:
         state = "basis"
+
     # save for scale free net
     if network_type == "sf": 
         if str(network.m) not in os.listdir(f"data/networks/{state}/sf"):
@@ -176,6 +178,7 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
     
     # metric
     distorted_fracs = props["Distorted Frac"]
+    dist_per_step = props["Dist Step Frac"]
 
     # network props
     num_agents = props["Number of Agents"]
@@ -250,4 +253,10 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
         network.add_connection(a1, a2)
 
     network.agent_w_highest_deg = id_to_agent[props["Agent_w_Highest_Deg"] ]
-    return network, distorted_fracs
+    return network, distorted_fracs, dist_per_step
+
+
+
+
+
+    

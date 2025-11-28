@@ -1,6 +1,7 @@
-import numpy as np, torch
+import numpy as np
+import torch
 from classes.agent import Agent
-from scipy import stats
+# from scipy import stats
 # from powerlaw import Fit
 import bisect
 

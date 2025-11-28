@@ -1,5 +1,9 @@
 import re, csv, json
 from collections import defaultdict
+from sklearn.feature_extraction.text import TfidfVectorizer
+import math
+from sklearn.decomposition import PCA
+import numpy as np
 
 def load_ngrams_tsv(filepath: str, skip_header=True) -> set:
     """
@@ -97,3 +101,57 @@ def analyze_distorted_language(network, ngrams_file: str, ngrams = None, n: int 
         highest_frac = max(highest_frac, results[agent.ID]["frac_distorted_last"])
         highest_frac = max(highest_frac, results[agent.ID]["frac_distorted_first"])
     return results, highest_frac
+
+
+# TF-IDF computation
+def compute_tf_idf(all_tweets):
+
+    # remove english common words
+    vectorizer = TfidfVectorizer(stop_words='english', lowercase=True)
+
+    # fit the model and transform the tweets
+    tf_idf = vectorizer.fit(all_tweets)
+
+    # get vocabulary
+    vocab = np.array(vectorizer.get_feature_names_out())
+    return tf_idf, vocab, vectorizer
+
+def retrieve_tf_idf(network, num_steps=100):
+
+    tf_idf_all = []
+
+    tf_idf_lists = []
+    num_windows = network.iterations // num_steps
+    for agent in network.all_agents:
+        for w in range(num_windows):
+            if len(tf_idf_lists) < num_windows:
+                tf_idf_lists.append([])
+            tf_idf_lists[w].extend(agent.tweethistory[(w* num_steps):(w + 1) * num_steps])
+
+        # extend with remaining tweets
+        if network.iterations % num_steps != 0:
+            if len(tf_idf_lists) < num_windows + 1:
+                tf_idf_lists.append([])
+            tf_idf_lists[-1].extend(agent.tweethistory[(num_windows * num_steps):])
+        
+        # also keep a vocab of all tweets
+        tf_idf_all.extend(agent.tweethistory)
+    
+
+    for w in range(len(tf_idf_lists)):
+        tf_idf_lists[w] = [t for t in tf_idf_lists[w] if t != "NO_TWEET"]
+        tf_idf_lists[w] = " ".join(tf_idf_lists[w])    
+
+    tf_idf_all = [t for t in tf_idf_all if t!= "NO_TWEET"]
+
+    if len(tf_idf_all) == 0:
+        raise ValueError("No valid tweets found in the network for TF-IDF computation.")
+    tf_idf, vocab, vectorizer = compute_tf_idf(tf_idf_all)
+    global_tf_idf = vectorizer.transform(tf_idf_lists)  # get tf-idf for start and end
+    global_tf_idf = global_tf_idf.toarray()
+    return global_tf_idf, vocab, vectorizer
+
+def reduce_dimensionality(tf_idf_matrix, n_components=2):
+    pca = PCA(n_components=n_components)
+    reduced_data = pca.fit_transform(tf_idf_matrix)
+    return reduced_data

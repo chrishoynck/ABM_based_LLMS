@@ -89,7 +89,7 @@ def generate_parser():
 
     return parser.parse_args()
 
-def update_network(network, running_fracs = [], rounds=1, seed=42, enforce_ngrams = False):
+def update_network(network, fracs_dist_step = [], running_fracs = [], rounds=1, seed=42, enforce_ngrams = False):
     """Update the network for one round and return the mean fraction of distorted tweets."""
 
     # only enforce n-grams if specified
@@ -104,9 +104,10 @@ def update_network(network, running_fracs = [], rounds=1, seed=42, enforce_ngram
         mean_running_frac, frac_distorted_this_step = network.update_round(tokenizer, pipe, n_grams=n_grams, distorted_tweets=distorted_tweets)
         print(f"Round {network.iterations}: Mean fraction of distorted tweets (all agents): {mean_running_frac:.4f}")
         running_fracs.append(mean_running_frac)
+        fracs_dist_step.append(frac_distorted_this_step)
         if network.iterations % 10 == 0:
             print(f"finished round {network.iterations}")
-    return running_fracs, network, frac_distorted_this_step
+    return running_fracs, network, fracs_dist_step
 
 def run_simulation(
     net="sf",
@@ -151,16 +152,16 @@ def run_simulation(
     network = build_network(args, personas=personas, depressed_personas=depressed_personas)
 
     # run updates
-    running_fracs, network, frac_distorted_this_step = update_network(network, running_fracs=[], rounds=rounds, seed=seed, enforce_ngrams=enforce_ngrams)
+    running_fracs, network, fracs_dist_step = update_network(network, fracs_dist_step=[], running_fracs=[], rounds=rounds, seed=seed, enforce_ngrams=enforce_ngrams)
     tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
-    return network, tweet_history, running_fracs, frac_distorted_this_step
+    return network, tweet_history, running_fracs, fracs_dist_step
 
 if __name__ == "__main__":
     # keep CLI behavior
     args = generate_parser()
 
-    network, tweet_history, running_fracs, frac_distorted_this_step = run_simulation(
+    network, tweet_history, running_fracs, fracs_dist_step = run_simulation(
         net=args.net,
         rounds=args.rounds,
         num_agents=args.num_agents,
@@ -173,15 +174,15 @@ if __name__ == "__main__":
         enforce_ngrams=args.enforce_ngrams,
     )
     # return output file the network is printed to
-    file_output_path = ri.read_out_network_properties(network, args.seed, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
+    file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
     print(f"Network properties saved to {file_output_path}")
 
     # reload network from saved properties
-    network, distorted_fracs = ri.generate_network(file_output_path, pipe, starting_distribution=0.5)
-    running_fracs, network, frac_distorted_this_step = update_network(network, running_fracs=distorted_fracs, rounds=args.rounds, seed=args.seed)
+    network, distorted_fracs, dist_per_step = ri.generate_network(file_output_path, pipe, starting_distribution=0.5)
+    running_fracs, network, fracs_dist_step = update_network(network, fracs_dist_step=dist_per_step, running_fracs=distorted_fracs, rounds=args.rounds, seed=args.seed)
     tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
-    file_output_path = ri.read_out_network_properties(network, args.seed, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
+    file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
     print(f"Network properties saved to {file_output_path}")
 
 
@@ -205,7 +206,7 @@ if __name__ == "__main__":
         pmtje = 0.0
 
     vis.plot_running_fracs(running_fracs, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
-    vis.plot_distorted_fracs(frac_distorted_this_step, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
+    vis.plot_distorted_fracs(fracs_dist_step, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
     # vis.print_network(network)
 
     
