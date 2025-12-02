@@ -4,7 +4,8 @@ from classes.agent import Agent
 from scipy.spatial.distance import cdist
 # from scipy import stats
 # from powerlaw import Fit
-import bisect
+import bisect as bs_norm
+from scipy.optimize import bisect
 
 class _Network:
     """
@@ -424,7 +425,7 @@ class ScaleFreeNetwork(_Network):
             target_sum = self.rng.random() * self.total_degree
     
             # Use binary search to find the index of the selected agent
-            idx = bisect.bisect_left(self.cumulative_degree_list, target_sum)
+            idx = bs_norm.bisect_left(self.cumulative_degree_list, target_sum)
             if idx >= len(self.all_agents):
                 idx = len(self.all_agents) - 1  # Safeguard against index overflow
 
@@ -568,46 +569,135 @@ class SocialDistanceAttachment(_Network):
     This class represents a social distance attachment network of agents.
     It inherits from the _Network class and initializes the network by connecting agents based on social distance.
     """
-    def __init__(self, alpha, m, dist_type= "uniform", **kwargs):
+    def __init__(self, alpha, dim, degree, depressed_personas=None, dist_type= "uniform", **kwargs):
         """
         Initialize the network by connecting agents based on social distance.
         """
         super().__init__(**kwargs)
         # Additional initialization for social distance attachment can be added here
         self.alpha = alpha
-        self.m = m
+        self.dim = dim
         self.dist_type = dist_type
-        self.dist_matrix = None
+        self.b = 0.0
+        self.agent_positions = None
+        self.degree = degree
+        
+        self.initialize_network(depressed_personas=depressed_personas)
 
-    def initialize_network(self):
+    def initialize_network(self, depressed_personas=None):
         """
         Initialize the network based on social distance attachment.
         """
-        X = self.sample_positions(self.num_agents, self.m, self.dist_type)
-        self.dist_matrix = cdist(X, X)   # shape (N, N) 
-        np.fill_diagonal(self.dist_matrix, np.inf)  # avoid self-loops
+
+        # generate agent positions for distance calculations
+        self.agent_positions = self.sample_positions(len(self.all_agents), space_type=self.dist_type)
+        self.dist_matrix = cdist(self.agent_positions, self.agent_positions)
+        np.fill_diagonal(self.dist_matrix, np.inf)
+
+        # find b parameter for target expected degree
+        self.b = self.find_b_for_target_Ek()
+        self.generate_connections()
+
+        if depressed_personas is not None:
+            # currently one persona in data 
+            self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
+            print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
 
 
-    def sample_positions(N, m, space_type, n_clusters=4):
+    def sample_positions(self, N, space_type, n_clusters=4):
         if space_type == "uniform":
             # [0, 1]^m
-            return np.random.rand(N, m)
+            return np.random.rand(N, self.dim)
 
         if space_type == "gaussian_clusters":
             # equally sized clusters
             pts_per_cluster = N // n_clusters
             rest = N - pts_per_cluster * n_clusters
             sizes = [pts_per_cluster]*n_clusters
+
+            # assign remaining points
             sizes[0] += rest
 
-            centers = np.random.uniform(-1, 1, size=(n_clusters, m))
-            X = []
+            # generate centers of gaussians
+            centers = self.rng.uniform(-1, 1, size=(n_clusters, self.dim))
+            agent_points = []
             for c, size in zip(centers, sizes):
-                X.append(c + 0.1 * np.random.randn(size, m))
-            return np.vstack(X)
-
+                # generate points around each center
+                agent_points.append(c + 0.1 * self.rng.randn(size, self.dim))
+            return np.vstack(agent_points)
         if space_type == "lognormal":
-            return np.random.lognormal(mean=0.0, sigma=1.0, size=(N, m))
+            return self.rng.lognormal(mean=0.0, sigma=1.0, size=(N, self.dim))
 
         raise ValueError("unknown space_type")
+
+    @staticmethod
+    def expected_degree_for_b(b, D, alpha):
+        """helper function to compute expected degree for given b"""
+        pij = 1.0 / (1.0 + (D / b)**alpha)
+
+        # no self-loops
+        np.fill_diagonal(pij, 0.0)
+        N = D.shape[0]
+        return pij.sum() / N
+
+    def find_b_for_target_Ek(self, tol=1e-3):
+        """
+        find b such that expected degree is degree using bisection
+        by searching in log space
+        """
+        # work in log-space: b = exp(z)
+
+        def f(z):
+            # searching in log space
+            b = np.exp(z)
+            return self.expected_degree_for_b(b, self.dist_matrix, self.alpha) - self.degree
+
+        # bracket in log-space
+        Dmax = self.dist_matrix[~np.isinf(self.dist_matrix)].max()
+        z_low  = np.log(1e-6)
+        z_high = np.log(Dmax * 10 + 1e-3)
+
+        # bisect to find b 
+        z_star = bisect(f, z_low, z_high, xtol=tol)
+        return np.exp(z_star)
+    
+
+    def sda_graph(self, N):
+        """ Generate a social distance attachment graph with N nodes in dim dimensions.
+        Args:
+            N (int): number of nodes
+            alpha (float): attachment exponent
+            space_type (str): type of space to sample positions from
+        Returns:
+            A (np.ndarray): adjacency matrix of the generated graph
+            X (np.ndarray): positions of the nodes
+        """
+        
+        
+        # generate connection probabilities between nodes
+        P = 1.0 / (1.0 + (self.dist_matrix / self.b)**self.alpha)
+        np.fill_diagonal(P, 0.0)
+
+        # sample adjacency matrix (undirected)
+        rand_probs = self.rng.random((N, N))
+        A = (rand_probs < P).astype(int)
+
+        # generate adjacency matrix (enforce symmetry (undirected))
+        A = np.triu(A, 1)
+        A = A + A.T
+
+        return A
+    
+    def generate_connections(self):
+        ''' Generate connections based on social distance attachment.
+        ''' 
+        n = len(self.all_agents)
+        adjacency = self.sda_graph(n)
+        for i in range(n):
+            for j in range(i+1, n):
+                if adjacency[i, j] == 1:
+                    self.add_connection(self.all_agents[i], self.all_agents[j])
+
+
+
 

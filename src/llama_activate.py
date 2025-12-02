@@ -74,7 +74,7 @@ def build_network(args, personas, depressed_personas=None):
 def generate_parser():
     "parse all given arguments"
     parser = argparse.ArgumentParser(description="Run LLM agent simulation.")
-    parser.add_argument("net", nargs="?", choices=["sf", "r"], default="sf", help="Network type: sf=ScaleFree, r=Random")
+    parser.add_argument("net", nargs="?", choices=["sf", "r", "sba"], default="sf", help="Network type: sf=ScaleFree, r=Random, sba=SocialDistanceAttachment")
     parser.add_argument("--rounds", type=int, default=10, help="Number of update rounds")
     parser.add_argument("--num_agents", type=int, default=10, help="Total number of agents")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -87,6 +87,8 @@ def generate_parser():
     parser.add_argument("--depressed", action="store_true", help="Include depressed personas")
     parser.add_argument("--enforce_ngrams", action="store_true", help="Enforce distorted-language n-grams in tweets")
     parser.add_argument("--use_saved_network", action="store_true", help="Use saved network properties to reload network")
+    parser.add_argument("--alpha", type=float, default=1.0, help="Alpha parameter for social distance attachment (scale-free)")
+    parser.add_argument("--degree", type=int, default=2, help="Dimensionality of social space (scale-free)")
 
     return parser.parse_args()
 
@@ -120,8 +122,8 @@ def run_simulation(
     p=0.5,
     k=0, 
     depressed = False, 
-    enforce_ngrams = False):
-
+    enforce_ngrams = False, 
+    alpha = 0.0):
     """Run the simulation and return the network + tweet history."""
     set_seed(SEED)     
     print(type(pipe.model))
@@ -177,6 +179,9 @@ def retrieve_existing_net(args):
     if args.net == "sf":
         what_network = "sf"
         parameter = f'{args.m}'
+    elif args.net == "sba":
+        what_network = "sba"
+        parameter = f'{args.alpha}_d{args.m}'.replace(".", "_")
     else:
         parameter = f'{str(args.p).replace(".", "_")}'
         what_network = "rand"
