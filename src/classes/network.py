@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from classes.agent import Agent
+from scipy.spatial.distance import cdist
 # from scipy import stats
 # from powerlaw import Fit
 import bisect
@@ -163,11 +164,16 @@ class _Network:
         # state update after all agents have decided
         distorted_this_step = 0
         distorted_fracs = []
+        num_active_agents = 0
         for agent in self.all_agents:
             agent.commit(n_grams=n_grams)
             self.cds_info.append((agent.frac_distorted_neigh,  agent.activation_state))
+            if agent.activation_state: 
+                num_active_agents+=1
+
             # this agent always sends out distorted tweets
             if agent != self.agent_w_highest_deg or len(distorted_tweets) ==0:
+
                 if len(agent.distorted_tweets) > 0: 
 
                     # compute distorted_tweetst this step
@@ -183,8 +189,14 @@ class _Network:
         
         if len(distorted_fracs) == 0:
             print("no distorted fracs recorded, returning 0")
-            return 0
-        return np.mean(distorted_fracs), distorted_this_step / len(self.all_agents)
+            return 0, 0
+        
+        # prevent devision by 0
+        if num_active_agents == 0: 
+            dist_this_step_norm = 0
+        else: 
+            dist_this_step_norm =  distorted_this_step / num_active_agents
+        return np.mean(distorted_fracs), dist_this_step_norm
 
         
 class RandomNetwork(_Network):
@@ -550,3 +562,52 @@ class ScaleFreeNetwork(_Network):
         assert all(len(agent.agent_connections) >= self.m for agent in [active_agent, break_agent, agent1, agent2]), (
             "Network adjustment violated the minimum degree constraint."
         )
+
+class SocialDistanceAttachment(_Network):
+    """
+    This class represents a social distance attachment network of agents.
+    It inherits from the _Network class and initializes the network by connecting agents based on social distance.
+    """
+    def __init__(self, alpha, m, dist_type= "uniform", **kwargs):
+        """
+        Initialize the network by connecting agents based on social distance.
+        """
+        super().__init__(**kwargs)
+        # Additional initialization for social distance attachment can be added here
+        self.alpha = alpha
+        self.m = m
+        self.dist_type = dist_type
+        self.dist_matrix = None
+
+    def initialize_network(self):
+        """
+        Initialize the network based on social distance attachment.
+        """
+        X = self.sample_positions(self.num_agents, self.m, self.dist_type)
+        self.dist_matrix = cdist(X, X)   # shape (N, N) 
+        np.fill_diagonal(self.dist_matrix, np.inf)  # avoid self-loops
+
+
+    def sample_positions(N, m, space_type, n_clusters=4):
+        if space_type == "uniform":
+            # [0, 1]^m
+            return np.random.rand(N, m)
+
+        if space_type == "gaussian_clusters":
+            # equally sized clusters
+            pts_per_cluster = N // n_clusters
+            rest = N - pts_per_cluster * n_clusters
+            sizes = [pts_per_cluster]*n_clusters
+            sizes[0] += rest
+
+            centers = np.random.uniform(-1, 1, size=(n_clusters, m))
+            X = []
+            for c, size in zip(centers, sizes):
+                X.append(c + 0.1 * np.random.randn(size, m))
+            return np.vstack(X)
+
+        if space_type == "lognormal":
+            return np.random.lognormal(mean=0.0, sigma=1.0, size=(N, m))
+
+        raise ValueError("unknown space_type")
+

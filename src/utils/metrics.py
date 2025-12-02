@@ -105,53 +105,97 @@ def analyze_distorted_language(network, ngrams_file: str, ngrams = None, n: int 
 
 # TF-IDF computation
 def compute_tf_idf(all_tweets):
+    '''Compute TF-IDF for a list of tweets.
+    Args:
+        all_tweets (List(str)): List of tweet texts.
+    Returns:
+        vocab (np.array): Vocabulary array. 
+        vectorizer: Fitted TfidfVectorizer object.
+    '''
 
     # remove english common words
     vectorizer = TfidfVectorizer(stop_words='english', lowercase=True)
 
-    # fit the model and transform the tweets
-    tf_idf = vectorizer.fit(all_tweets)
+    # fit the model
+    vectorizer.fit(all_tweets)
 
     # get vocabulary
     vocab = np.array(vectorizer.get_feature_names_out())
-    return tf_idf, vocab, vectorizer
+    return  vocab, vectorizer
 
-def retrieve_tf_idf(network, num_steps=100):
-
+def retrieve_tf_idf(networks, num_steps= 30, shift=5, n_grams= None):
+    '''Retrieve TF-IDF data from the network's agents' tweet histories.
+    Args:
+        network: The network object.
+        num_steps (int): Number of steps used in TF-IDF retrieval.
+        shift (int): Shift between windows.
+    Returns:
+        global_tf_idf (np.array): TF-IDF matrix for all windows.
+        vocab (np.array): Vocabulary array.
+        vectorizer: Fitted TfidfVectorizer object.
+    '''
     tf_idf_all = []
+    docs_per_network = []
+  
+    for i,  network in enumerate(networks):
+        # calculate number of windows
+        num_windows = max(1, (network.iterations - num_steps) // shift + 1)
+        tf_idf_lists = [[] for _ in range(num_windows)]
+        for agent in network.all_agents:
 
-    tf_idf_lists = []
-    num_windows = network.iterations // num_steps
-    for agent in network.all_agents:
-        for w in range(num_windows):
-            if len(tf_idf_lists) < num_windows:
-                tf_idf_lists.append([])
-            tf_idf_lists[w].extend(agent.tweethistory[(w* num_steps):(w + 1) * num_steps])
+            # iterate over windows
+            for w in range(num_windows):
+                # extend with tweets in this window
+                tf_idf_lists[w].extend(agent.tweethistory[(w* shift):(w*shift + num_steps)])
 
-        # extend with remaining tweets
-        if network.iterations % num_steps != 0:
-            if len(tf_idf_lists) < num_windows + 1:
-                tf_idf_lists.append([])
-            tf_idf_lists[-1].extend(agent.tweethistory[(num_windows * num_steps):])
-        
-        # also keep a vocab of all tweets
-        tf_idf_all.extend(agent.tweethistory)
+            # extend with remaining tweets
+            if (num_windows - 1) * shift + num_steps < network.iterations:
+                if len(tf_idf_lists) < num_windows + 1:
+                    tf_idf_lists.append([])
+                tf_idf_lists[-1].extend(agent.tweethistory[((num_windows-1) * shift + num_steps):])
+            
+            # also keep a vocab of all tweets
+            tf_idf_all.extend(agent.tweethistory)
+            if n_grams is not None and i == 0:
+                tf_idf_all.extend(n_grams)
     
+        cleaned_tf_idf = []
+        w = 0
+        while w < len(tf_idf_lists):
+            tf_idf_lists[w] = [t for t in tf_idf_lists[w] if t != "NO_TWEET"]
+            tf_idf_lists[w] = " ".join(tf_idf_lists[w])
+            # remove empty tweet lists
+            if tf_idf_lists[w] == "":
+                print("WARNING: Empty tweet list for window ", w)
+                tf_idf_lists.pop(w)
+            else:
+                cleaned_tf_idf.append(tf_idf_lists[w])
+                w+=1
 
-    for w in range(len(tf_idf_lists)):
-        tf_idf_lists[w] = [t for t in tf_idf_lists[w] if t != "NO_TWEET"]
-        tf_idf_lists[w] = " ".join(tf_idf_lists[w])    
-
+        docs_per_network.append(cleaned_tf_idf)
+    
     tf_idf_all = [t for t in tf_idf_all if t!= "NO_TWEET"]
 
     if len(tf_idf_all) == 0:
         raise ValueError("No valid tweets found in the network for TF-IDF computation.")
-    tf_idf, vocab, vectorizer = compute_tf_idf(tf_idf_all)
-    global_tf_idf = vectorizer.transform(tf_idf_lists)  # get tf-idf for start and end
-    global_tf_idf = global_tf_idf.toarray()
+    vocab, vectorizer = compute_tf_idf(tf_idf_all)
+
+    global_tf_idf = [vectorizer.transform(doc).toarray() for doc in docs_per_network]
+
+    # global_tf_idf = global_tf_idf.toarray()
     return global_tf_idf, vocab, vectorizer
 
-def reduce_dimensionality(tf_idf_matrix, n_components=2):
+def reduce_dimensionality(tf_idf_matrices, n_components=2):
+    '''Reduce dimensionality of TF-IDF matrix using PCA.
+    Args:
+        tf_idf_matrices (np.array): TF-IDF matrix.
+        n_components (int): Number of PCA components.
+    Returns:
+        reduced_runs (np.array): PCA-reduced data.
+    '''
+    assert n_components <= tf_idf_matrices[0].shape[1], "n_components must be <= number of features"
+    tf_idf_stacked = np.vstack(tf_idf_matrices)
     pca = PCA(n_components=n_components)
-    reduced_data = pca.fit_transform(tf_idf_matrix)
-    return reduced_data
+    pca.fit(tf_idf_stacked)
+    reduced_runs = [pca.transform(tf_idf_matrix) for tf_idf_matrix in tf_idf_matrices]
+    return reduced_runs

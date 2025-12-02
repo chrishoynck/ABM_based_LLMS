@@ -86,6 +86,7 @@ def generate_parser():
     parser.add_argument("--k", type=int, default=0, help="Regular degree (Watts–Strogatz if >0)")
     parser.add_argument("--depressed", action="store_true", help="Include depressed personas")
     parser.add_argument("--enforce_ngrams", action="store_true", help="Enforce distorted-language n-grams in tweets")
+    parser.add_argument("--use_saved_network", action="store_true", help="Use saved network properties to reload network")
 
     return parser.parse_args()
 
@@ -102,7 +103,7 @@ def update_network(network, fracs_dist_step = [], running_fracs = [], rounds=1, 
     
     for _ in range(rounds):
         mean_running_frac, frac_distorted_this_step = network.update_round(tokenizer, pipe, n_grams=n_grams, distorted_tweets=distorted_tweets)
-        print(f"Round {network.iterations}: Mean fraction of distorted tweets (all agents): {mean_running_frac:.4f}")
+        print(f"Round {network.iterations}: Mean running fraction of distorted agents: {mean_running_frac:.4f}, Fraction distorted this step: {frac_distorted_this_step:.4f} ")
         running_fracs.append(mean_running_frac)
         fracs_dist_step.append(frac_distorted_this_step)
         if network.iterations % 10 == 0:
@@ -139,8 +140,10 @@ def run_simulation(
         depressed=depressed,
         enforce_ngrams=enforce_ngrams,
     )
+    personas = None
     # load personas
-    personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
+    if False:
+        personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
 
     # only load depressed personas if specified
     if depressed:
@@ -157,56 +160,100 @@ def run_simulation(
 
     return network, tweet_history, running_fracs, fracs_dist_step
 
+def retrieve_existing_net(args):
+    '''Retrieve file path for existing network based on arguments.
+    Args:
+        args: Argument namespace containing network parameters.
+    Returns:
+        file_path (str): Path to the saved network file.
+    '''
+    if args.enforce_ngrams:
+        state = "enforced_ngrams"
+    elif args.depressed:
+        state = "depressed"
+    else:
+        state = "basis"
+    
+    if args.net == "sf":
+        what_network = "sf"
+        parameter = f'{args.m}'
+    else:
+        parameter = f'{str(args.p).replace(".", "_")}'
+        what_network = "rand"
+    
+    file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
+    return file_path
+
 if __name__ == "__main__":
     # keep CLI behavior
     args = generate_parser()
+    # states = ["basis", "depressed", "enforced_ngrams"]
+    # states = ["basis"]
+    states = ["depressed"]
+    # states = ["enforced_ngrams"]
+    if args.use_saved_network:
+        file_paths = []
+        networks = []
+        for state in states:
+            args.enforce_ngrams = (state == "enforced_ngrams")
+            args.depressed = (state == "depressed")
+            file_path = retrieve_existing_net(args)
+            file_paths.append(file_path)
+            # reload network from saved properties
+            network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe, starting_distribution=args.starting_distribution)
+            networks.append(network)
+    else:
+        network, tweet_history, running_fracs, fracs_dist_step = run_simulation(
+            net=args.net,
+            rounds=args.rounds,
+            num_agents=args.num_agents,
+            seed=args.seed,
+            starting_distribution=args.starting_distribution,
+            m=args.m,
+            p=args.p,
+            k=args.k,
+            depressed=args.depressed,
+            enforce_ngrams=args.enforce_ngrams,
+        )
+        # return output file the network is printed to
+        file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
+        print(f"Network properties saved to {file_output_path}")
 
-    network, tweet_history, running_fracs, fracs_dist_step = run_simulation(
-        net=args.net,
-        rounds=args.rounds,
-        num_agents=args.num_agents,
-        seed=args.seed,
-        starting_distribution=args.starting_distribution,
-        m=args.m,
-        p=args.p,
-        k=args.k,
-        depressed=args.depressed,
-        enforce_ngrams=args.enforce_ngrams,
-    )
-    # return output file the network is printed to
-    file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
-    print(f"Network properties saved to {file_output_path}")
+        # reload network from saved properties
+        network, running_fracs, fracs_dist_step = ri.generate_network(file_output_path, pipe, starting_distribution=0.5)
+        running_fracs, network, fracs_dist_step = update_network(network, fracs_dist_step=fracs_dist_step, running_fracs=running_fracs, rounds=args.rounds, seed=args.seed)
+        tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
 
-    # reload network from saved properties
-    network, distorted_fracs, dist_per_step = ri.generate_network(file_output_path, pipe, starting_distribution=0.5)
-    running_fracs, network, fracs_dist_step = update_network(network, fracs_dist_step=dist_per_step, running_fracs=distorted_fracs, rounds=args.rounds, seed=args.seed)
-    tweet_history = [(a.ID, a.tweethistory) for a in network.all_agents]
-
-    file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
-    print(f"Network properties saved to {file_output_path}")
-
+        file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
+        print(f"Network properties saved to {file_output_path}")
+        networks = [network]
 
     # network.
     # print tweet histories (optional)
-    for agent_id, hist in tweet_history:
-        print(f"Tweet history for Agent {agent_id}:")
-        for tweet in hist:
-            print(f"{tweet}")
+    # for agent_id, hist in tweet_history:
+    #     print(f"Tweet history for Agent {agent_id}:")
+    #     for tweet in hist:
+    #         print(f"{tweet}")
     
     # vis.distorted_info(network.cds_info)
 
     # set directory parameters for plotting
+    pmtje = 0.0
+    mmtje = 0
     if args.net == "sf":
         mmtje = network.m
-    else:
-        mmtje = 0
-    if args.net == "r":
+    elif args.net == "r":
         pmtje = args.p
-    else:
-        pmtje = 0.0
+    
+    # plot TF-IDF PCA
+    n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
+    global_tf_idf, _, _ = metrics.retrieve_tf_idf(networks, num_steps=100, shift=5, n_grams=n_grams)
+    pca_runs = metrics.reduce_dimensionality(global_tf_idf, n_components=2)
+    vis.plot_tf_idf_PCA(pca_runs, states, num_steps=100, shift=5)
+    print("Plotted TF-IDF PCA:", len(global_tf_idf), "entries.")
 
-    vis.plot_running_fracs(running_fracs, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
-    vis.plot_distorted_fracs(fracs_dist_step, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
+    # vis.plot_running_fracs(running_fracs, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
+    # vis.plot_distorted_fracs(fracs_dist_step, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
     # vis.print_network(network)
 
     
