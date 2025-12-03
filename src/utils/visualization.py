@@ -96,7 +96,7 @@ def plot_distorted_fracs(frac_distorted_this_step, m=0, p=0.0, enforced_ngrams=F
     if not os.path.exists(path):
         os.makedirs(path)
 
-    plt.savefig(f"{path}/distorted_step_fracs.png", dpi=300)
+    plt.savefig(f"{path}/distorted_step_fracs_3.png", dpi=300)
     plt.show()
 
 
@@ -128,9 +128,32 @@ def plot_running_fracs(running_fracs, m=0, p=0.0, enforced_ngrams=False, depress
     if not os.path.exists(path):
         os.makedirs(path)
 
-    plt.savefig(f"{path}/running_fracs.png", dpi=300)
+    plt.savefig(f"{path}/running_fracs_3.png", dpi=300)
+    plt.show()
+
+def plot_tf_idf_PCA(reduced_runs, states, num_steps=100, shift=5):
+    '''
+    This function plots the PCA-reduced TF-IDF data.
+    Args:
+        reduced_data (np.array): 2D array with reduced TF-IDF data.
+        network: The network object.
+        num_steps (int): Number of steps used in TF-IDF retrieval.
+        shift (int): Shift used in TF-IDF retrieval.
+    '''
+    plt.figure(figsize=(3, 3))
+    plt.title(f'TF-IDF PCA \n (window size={num_steps}, shift={shift})')
+    for i, reduced in enumerate(reduced_runs):
+        print("shape reduced:", reduced.shape)
+        plt.scatter(reduced[:, 0], reduced[:, 1], alpha=0.7, s=10, label=states[i])
+        plt.plot(reduced[:, 0], reduced[:, 1], alpha=0.4)
+    plt.xlabel("PCA Component 1")
+    plt.ylabel("PCA Component 2")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.savefig(f"plots/tf_idf_pca_window{num_steps}_shift{shift}_{len(states)}{states[0]}.png", bbox_inches='tight', dpi=300)
     plt.show()
 
 
+    
 
 
