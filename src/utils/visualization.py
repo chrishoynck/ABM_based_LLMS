@@ -154,6 +154,12 @@ def plot_tf_idf_PCA(reduced_runs, states, num_steps=100, shift=5):
     plt.show()
 
 
-    
+def check_degree_distribution(unique_degrees, frequencies):
+    plt.figure(figsize=(10, 6))
+    plt.loglog(unique_degrees, frequencies, 'bo')
+    plt.title('Degree Distribution (Log-Log Scale)')
+    plt.xlabel('Degree')
+    plt.ylabel('Frequency')
+    plt.show()
 
 

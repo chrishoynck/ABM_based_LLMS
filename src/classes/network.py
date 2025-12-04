@@ -2,10 +2,12 @@ import numpy as np
 import torch
 from classes.agent import Agent
 from scipy.spatial.distance import cdist
-# from scipy import stats
-# from powerlaw import Fit
+from scipy import stats
+from powerlaw import Fit
+import matplotlib.pyplot as plt
 import bisect as bs_norm
 from scipy.optimize import bisect
+import utils.visualization as vis
 
 class _Network:
     """
@@ -260,54 +262,6 @@ class RandomNetwork(_Network):
             self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
             print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
 
-    def network_adjustment(self, sL, sR):
-        """
-        Adjust the network by breaking ties and adding new connections.
-
-        Args:
-            sL: Normalized significance for the left media hub.
-            sR: Normalized significance for the right media hub.
-        """
-        self.new_edge = []
-        self.removed_edge = []
-
-        if len(self.activated)>0:
-            # Select an active agent involved in the cascade
-            # sort for reproducability purposes
-            active_agent = self.rng.choice(list(sorted(self.activated, key=lambda x: x.ID)))
-
-            if ((active_agent.identity == 'H' and sL <= active_agent.response_threshold) or
-                (active_agent.identity == 'D' and sR <= active_agent.response_threshold)):
-
-                # Break a tie with an active neighbor (use set for efficiency)
-                active_neighbors = [n for n in active_agent.agent_connections if n.activation_state]
-                number_of_connections = len(self.connections)
-
-                # If active neighbors exist, remove an edge
-                if len(active_neighbors) > 0:
-                    
-                    self.alterations+=1
-                    
-                    # remove edge, sort active neighbors for reproducability
-                    break_agent = self.rng.choice(sorted(active_neighbors, key=lambda x: x.ID))
-                    self.remove_connection(active_agent, break_agent)
-                    self.removed_edge.extend([active_agent.ID, break_agent.ID])
-
-                    # only if an edge is removed, add an extra edge.
-                    # agent1 = self.rng.choice(list(self.all_agents))
-                    agent1 = self.rng.choice(self.all_agents)
-                    cant_be_picked = agent1.agent_connections.copy()
-                    cant_be_picked.add(agent1)
-                    # agent2 = self.rng.choice(List(self.all_agents - cant_be_picked))
-
-                    filtered_agents = [agent for agent in self.all_agents if agent not in cant_be_picked]
-                    agent2 = self.rng.choice(filtered_agents)
-                    self.new_edge.extend([agent1.ID, agent2.ID])
-
-                    # add edge
-                    self.add_connection(agent1, agent2)
-
-                assert number_of_connections == len(self.connections), "invalid operation took place, new number of edges is different than old"
 
 
 class ScaleFreeNetwork(_Network):
@@ -407,8 +361,6 @@ class ScaleFreeNetwork(_Network):
             # currently one persona in data 
             self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
             print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
-        # # Step 4: Verify the scale-free properties
-        # self.verify_scale_free_distribution(self.plot)
 
 
     def _pick_agent_by_degree_global(self, forbidden=set(), max_tries=100):
@@ -500,76 +452,15 @@ class ScaleFreeNetwork(_Network):
         for deg in self.degree_distribution.values(): # IMPORTANT THIS MAINTANS ORDER
             running_sum += deg
             self.cumulative_degree_list.append(running_sum)
-        
-    def network_adjustment(self, sL, sR):
-        """
-        Adjust the network by breaking ties and adding new connections in a scale-free manner.
-        """
 
-        # Ensure there are activated agents
-        if len(self.activated) == 0:
-            return
 
-        # Select a valid active agent with more than m connections
-        active_agents_list = list(sorted(self.activated, key=lambda x: x.ID))
-        active_agent = self.rng.choice(active_agents_list)
-        retries = 100  # Limit retries to avoid infinite loops
-
-        while len(active_agent.agent_connections) <= self.m and retries > 0:
-            active_agent = self.rng.choice(active_agents_list)
-            retries -= 1
-
-        if retries == 0:
-            return
-
-        assert len(active_agent.agent_connections) > self.m, "Selected active agent does not have enough connections."
-
-        # Check if the active agent satisfies the conditions for breaking ties
-        if not (
-            (active_agent.identity == 'H' and sL <= active_agent.response_threshold)
-            or (active_agent.identity == 'D' and sR <= active_agent.response_threshold)
-        ):
-            return  # Skip adjustment if the active agent does not meet conditions
-
-        # Identify active neighbors
-        active_neighbors = [n for n in active_agent.agent_connections if n.activation_state]
-        assert len(active_neighbors) > 0, f"Active agent {active_agent} has no active neighbors to break ties with."
-        active_neighbors = sorted(active_neighbors, key=lambda x: x.ID)
-        for _ in range(100):  
-            break_agent = self.rng.choice(active_neighbors)
-            if len(break_agent.agent_connections) > self.m:
-                self.remove_connection(active_agent, break_agent)
-                break
-        else:
-            return 
-
-        # Assert that the edge was removed successfully
-        assert len(active_agent.agent_connections) >= self.m, "Edge removal violated minimum degree constraint."
-        assert len(break_agent.agent_connections) >= self.m, "Edge removal violated minimum degree constraint."
-
-        # Add a new edge according to scale-free properties
-        agent1 = self.rng.choice(self.all_agents)
-        assert agent1 is not None, "Failed to pick a valid agent1 for rewiring."
-
-        forbidden = set(agent1.agent_connections) | {agent1, active_agent}
-        agent2 = self._pick_agent_by_degree_global(forbidden=forbidden)
-        assert agent2 is not None, "Failed to pick a valid agent2 for rewiring."
-
-        self.add_connection(agent1, agent2)
-
-        self.alterations += 1
-
-        # Ensure network integrity after adjustment
-        assert all(len(agent.agent_connections) >= self.m for agent in [active_agent, break_agent, agent1, agent2]), (
-            "Network adjustment violated the minimum degree constraint."
-        )
 
 class SocialDistanceAttachment(_Network):
     """
     This class represents a social distance attachment network of agents.
     It inherits from the _Network class and initializes the network by connecting agents based on social distance.
     """
-    def __init__(self, alpha, dim, degree, depressed_personas=None, dist_type= "uniform", **kwargs):
+    def __init__(self, alpha, dim, degree, power_law=False, plot=False, depressed_personas=None, dist_type= "uniform", **kwargs):
         """
         Initialize the network by connecting agents based on social distance.
         """
@@ -582,9 +473,9 @@ class SocialDistanceAttachment(_Network):
         self.agent_positions = None
         self.degree = degree
         
-        self.initialize_network(depressed_personas=depressed_personas)
+        self.initialize_network(depressed_personas=depressed_personas, power_law=power_law, plot=plot)
 
-    def initialize_network(self, depressed_personas=None):
+    def initialize_network(self, depressed_personas=None, power_law=False, plot=False):
         """
         Initialize the network based on social distance attachment.
         """
@@ -596,18 +487,19 @@ class SocialDistanceAttachment(_Network):
 
         # find b parameter for target expected degree
         self.b = self.find_b_for_target_Ek()
-        self.generate_connections()
+        self.generate_connections(power_law=power_law)
 
         if depressed_personas is not None:
             # currently one persona in data 
             self.agent_w_highest_deg.persona = self.rng.choice(depressed_personas)
             print(f"Agent with highest degree is assigned depressed persona: {self.agent_w_highest_deg.persona['name']}, ID: {self.agent_w_highest_deg.ID}")
 
+        self.verify_scale_free_distribution(plot)
 
     def sample_positions(self, N, space_type, n_clusters=4):
         if space_type == "uniform":
             # [0, 1]^m
-            return np.random.rand(N, self.dim)
+            return self.rng.random((N, self.dim))
 
         if space_type == "gaussian_clusters":
             # equally sized clusters
@@ -623,7 +515,7 @@ class SocialDistanceAttachment(_Network):
             agent_points = []
             for c, size in zip(centers, sizes):
                 # generate points around each center
-                agent_points.append(c + 0.1 * self.rng.randn(size, self.dim))
+                agent_points.append(c + 0.1 * self.rng.standard_normal((size, self.dim)))
             return np.vstack(agent_points)
         if space_type == "lognormal":
             return self.rng.lognormal(mean=0.0, sigma=1.0, size=(N, self.dim))
@@ -682,22 +574,162 @@ class SocialDistanceAttachment(_Network):
         rand_probs = self.rng.random((N, N))
         A = (rand_probs < P).astype(int)
 
+
+        if self.directed:
+            return A
+        
         # generate adjacency matrix (enforce symmetry (undirected))
         A = np.triu(A, 1)
         A = A + A.T
 
-        return A
+        return P, A
     
-    def generate_connections(self):
+    def generate_connections(self, power_law=False):
         ''' Generate connections based on social distance attachment.
         ''' 
+        total_degree = 0
         n = len(self.all_agents)
-        adjacency = self.sda_graph(n)
+        if power_law:
+            stud_list = self.generate_stub_list(n, gamma=2.5, degree=self.degree)
+            P, _ = self.sda_graph(n)
+            adjacency = self.network_powerlaw(P, stud_list)
+        else:
+            _, adjacency = self.sda_graph(n)
         for i in range(n):
-            for j in range(i+1, n):
+            if self.directed:
+                start_val = 0
+            else:
+                start_val = i + 1
+            for j in range(start_val, n):
                 if adjacency[i, j] == 1:
                     self.add_connection(self.all_agents[i], self.all_agents[j])
+                    total_degree += 1
+                    if not self.directed:
+                        total_degree += 1
+        
+        print(f"Social Distance Attachment network initialized with average degree {total_degree / n:.2f}")
+
+    
+    def generate_stub_list(self, N, gamma, degree):
+        """ Generate a list of stubs for each node based on desired degree.
+
+        Returns:
+            stud_list (list): list of remaining stubs for each node
+        """
+
+        # generate degrees from powerlaw (scaled later)
+        stud_list = self.rng.zipf(gamma, size=N)
+
+        # consider to clip at 0
+        stud_list = np.clip(stud_list, a_min=1, a_max=N-1)
+
+        mean_degree = np.mean(stud_list)
+        if mean_degree == 0:
+            raise ValueError("Mean degree is zero, no connections can be made.")
+
+        # scale to desired degree
+        stud_list = (stud_list / mean_degree) * degree
+        stud_list = np.round(stud_list).astype(int)
+
+        # ensure sum of degrees is even
+        if stud_list.sum() % 2 == 1:
+            idx = self.rng.integers(0, N)
+            if stud_list[idx] < N - 1:
+                stud_list[idx] += 1
+            else:
+                stud_list[idx] -= 1
+
+        return stud_list
+    
+    def network_powerlaw(self, P, stud_list):
+        """ Generate a scale-free network withg SDC.
+
+        Args:
+            P (np.ndarray): connection probability matrix
+            stud_list (list): list of remaining stubs for each node
+        Returns:
+            A (np.ndarray): adjacency matrix of the generated graph
+        """
+        prob_m = 10**-9
+        A = np.zeros_like(P)
+        P.clip(min=prob_m, max=1, out=P)
+
+        # don't allow nodes with 0 stubs to connect or self-loops
+        P[stud_list <= 0, :] = 0.0
+        P[:, stud_list <= 0] = 0.0
+        np.fill_diagonal(P, 0.0)
+
+        assert np.sum(stud_list) > 0 , "stub list sum is 0, cannot generate powerlaw network"
+
+        while np.sum(stud_list) > 0:
+            
+            if P.sum() == 0:
+                print("No more possible connections can be made, exiting loop.")
+                break
+
+            # select agent 1 based on distance probabilities
+            select_probs = P.sum(axis=1)/P.sum()
+            agent1_ID = self.rng.choice(len(self.all_agents), p=select_probs)
+            possible_conn = P[agent1_ID, :]
+
+            # no possible neighbors for this agent
+            if possible_conn.sum() == 0:
+                stud_list[agent1_ID] = 0
+                P[agent1_ID, :] = 0
+                continue
+            
+            # select agent 2 based on distance probabilities
+            select_probs_agent2 = P[agent1_ID, :]/P[agent1_ID, :].sum()
+            agent2_ID = self.rng.choice(len(self.all_agents), p=select_probs_agent2)
+
+            # update stub list
+            stud_list[agent1_ID] -= 1
+
+            # update matrices
+            A[agent1_ID, agent2_ID] = 1
+            P[agent1_ID, agent2_ID] = 0
+            if stud_list[agent1_ID] == 0:
+                P[agent1_ID, :] = 0.0
+                P[:, agent1_ID] = 0.0
+
+            # if undirected, update the other direction
+            if not self.directed:
+                stud_list[agent2_ID] -= 1
+                A[agent2_ID, agent1_ID] = 1
+                P[agent2_ID, agent1_ID] = 0
+                if stud_list[agent2_ID] == 0:
+                    P[agent2_ID, :] = 0.0
+                    P[:, agent2_ID] = 0.0
+            
+        return A
+    
+    def verify_scale_free_distribution(self, plot):
+        """
+        Check if the network exhibits scale-free characteristics
+        """
+        # Calculate node degrees
+        degrees = [len(agent.agent_connections) for agent in self.all_agents]
+        
+        # Compute log-log plot for degree distribution
+        degree_counts = {}
+        for degree in degrees:
+            degree_counts[degree] = degree_counts.get(degree, 0) + 1
+        
+        unique_degrees = list(degree_counts.keys())
+        frequencies = list(degree_counts.values())
+        
+        if plot:
+            vis.check_degree_distribution(unique_degrees, frequencies)
+
+        fit = Fit(degrees)
+        print(f"Power-law fit: alpha={fit.power_law.alpha}, KS={fit.power_law.KS()}")
+        assert fit.power_law.KS() < 0.5, f"Power-law fit is not significant; {fit.power_law.KS()}"
+        # assert fit.power_law.alpha < 7, f"Power-law exponent is too high; {fit.power_law.alpha}"
+
+        
 
 
 
+        
 
+                
