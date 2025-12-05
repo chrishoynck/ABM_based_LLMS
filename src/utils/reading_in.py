@@ -42,12 +42,15 @@ def read_in_network_properties(file_path):
                 print("Failed to literal_eval Agents value:")
                 print(value)
                 raise
+        
             parsed_agents = []
-            for agent_id, wellbeing, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
+            
+            # ADD WELLBEING
+            for agent_id, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
                 parsed_agents.append(
                     (
                         int(agent_id),
-                        wellbeing,
+                        # wellbeing,
                         persona,
                         activation_state,
                         tweethistory,
@@ -227,12 +230,15 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
     # Restore agents
     # (agent_id, persona, activation_state,
     #  tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
-    for (agent_id, wellbeing, persona, activation_state,
+
+
+    # ADD WELLBEING
+    for (agent_id, persona, activation_state,
          tweethistory, active_tweethistory,
          distorted_tweethistory, frac_distorted_neigh) in props["Agents"]:
 
         ag = id_to_agent[agent_id]
-        ag.well_being = wellbeing
+        # ag.well_being = wellbeings
         ag.persona = persona
         ag.activation_state = activation_state
         ag.tweethistory = list(tweethistory)

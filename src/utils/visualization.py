@@ -92,7 +92,7 @@ def plot_distorted_fracs(frac_distorted_this_step, m=0, p=0.0, enforced_ngrams=F
     else:
         parameter = f'{str(p).replace(".", "")}'
 
-    path = f"plots/{setting}/{type_nn}/{parameter}"
+    path = f"plots/networks/{setting}/{type_nn}/{parameter}"
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -151,6 +151,41 @@ def plot_tf_idf_PCA(reduced_runs, states, num_steps=100, shift=5):
     plt.legend()
     plt.grid(alpha=0.3)
     plt.savefig(f"plots/tf_idf_pca_window{num_steps}_shift{shift}_{len(states)}{states[0]}.png", bbox_inches='tight', dpi=300)
+    plt.show()
+
+
+def plot_tf_idf_PCA_runs(mean_traj, std_traj=None, num_steps=100, shift=5, save=False):
+    """
+    Plot PCA-reduced TF-IDF trajectories.
+
+    Args:
+        mean_traj: dict[setting] -> array (T, 2)
+        std_traj:  dict[setting] -> array (T, 2), optional
+        num_steps: TF-IDF window size
+        shift:     TF-IDF shift
+        save:      whether to save the figure
+    """
+    plt.figure(figsize=(3, 3))
+    plt.title(f"TF-IDF PCA\n(window={num_steps}, shift={shift})")
+
+    for setting, traj in mean_traj.items():
+        traj = np.asarray(traj)  # (T, 2)
+
+        if std_traj is not None and setting in std_traj:
+            std = np.asarray(std_traj[setting])           # (T, 2)
+            std_norm = np.linalg.norm(std, axis=1)        # (T,)
+            # scale marker size a bit with std (optional)
+            s = 5 + 20 * (std_norm / (std_norm.max() + 1e-8))
+        else:
+            s = 10
+
+        plt.scatter(traj[:, 0], traj[:, 1], s=s, alpha=0.7, label=setting)
+        plt.plot(traj[:, 0], traj[:, 1], alpha=0.5)
+
+    plt.xlabel("PCA Component 1")
+    plt.ylabel("PCA Component 2")
+    plt.legend()
+    plt.grid(alpha=0.3)
     plt.show()
 
 

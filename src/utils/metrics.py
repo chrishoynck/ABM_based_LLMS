@@ -126,7 +126,7 @@ def compute_tf_idf(all_tweets):
 def retrieve_tf_idf(networks, num_steps= 30, shift=5, n_grams= None):
     '''Retrieve TF-IDF data from the network's agents' tweet histories.
     Args:
-        network: The network object.
+        networks: The network objects.
         num_steps (int): Number of steps used in TF-IDF retrieval.
         shift (int): Shift between windows.
     Returns:
@@ -185,6 +185,57 @@ def retrieve_tf_idf(networks, num_steps= 30, shift=5, n_grams= None):
     # global_tf_idf = global_tf_idf.toarray()
     return global_tf_idf, vocab, vectorizer
 
+
+def tf_idf_for_runs(networks_per_setting: dict, num_steps=30, shift=5, n_grams=None):
+    '''Compute TF-IDF matrices for multiple network runs.
+    Args:
+        networks: List of network objects.
+        num_steps (int): Number of steps used in TF-IDF retrieval.
+        shift (int): Shift between windows.
+    Returns:
+        tf_idf_matrices (List(np.array)): List of TF-IDF matrices for each run.
+        vocab (np.array): Vocabulary array.
+        vectorizer: Fitted TfidfVectorizer object.
+    '''
+    all_networks = []
+    setting_slices = {}
+    start_index = 0
+    for setting, networks in networks_per_setting.items():
+        all_networks.extend(networks)
+        end_index = start_index + len(networks)
+
+        # record slice for this setting
+        setting_slices[setting] = (start_index, end_index)
+        start_index = end_index
+
+    tf_idf_matrices, vocab, vectorizer = retrieve_tf_idf(
+        all_networks, num_steps=num_steps, shift=shift, n_grams=n_grams)
+    
+    meanvar_tf_idf_per_setting = {}
+    all_mats_per_setting = {}
+    for setting, (start, end) in setting_slices.items():
+
+        # returns tf-idf matrices for runs in this setting
+        matrixjes_over_runs = tf_idf_matrices[start:end]
+
+        # makes sure all matrices have the same length (number of time windows)
+        min_length = min(m.shape[0] for m in matrixjes_over_runs)
+        trimmed_matrices = [m[:min_length] for m in matrixjes_over_runs]
+        print("mim_length for setting ", setting, ": ", min_length)
+
+        # compute mean tf-idf over runs
+        stacked_matrices = np.stack(trimmed_matrices, axis=0)
+        mean_tf_idf = np.mean(stacked_matrices, axis=0)
+
+        meanvar_tf_idf_per_setting[setting] = mean_tf_idf
+        if setting not in all_mats_per_setting:
+            all_mats_per_setting[setting] = []
+        all_mats_per_setting[setting].extend(trimmed_matrices)
+
+    return meanvar_tf_idf_per_setting, all_mats_per_setting
+
+    
+
 def reduce_dimensionality(tf_idf_matrices, n_components=2):
     '''Reduce dimensionality of TF-IDF matrix using PCA.
     Args:
@@ -199,3 +250,47 @@ def reduce_dimensionality(tf_idf_matrices, n_components=2):
     pca.fit(tf_idf_stacked)
     reduced_runs = [pca.transform(tf_idf_matrix) for tf_idf_matrix in tf_idf_matrices]
     return reduced_runs
+
+def pca_on_means(mean_tf_idf_per_setting, n_components=2):
+    '''Apply PCA on mean TF-IDF matrices for multiple settings.
+    Args:
+        mean_tf_idf_per_setting (dict): {setting: mean_tf_idf_matrix}
+        n_components (int): Number of PCA components.
+    Returns:
+        reduced_means (dict): {setting: PCA-reduced mean TF-IDF matrix}
+        pca: Fitted PCA object.
+    '''
+    settings = list(mean_tf_idf_per_setting.keys())
+    mean_matrices = [mean_tf_idf_per_setting[setting] for setting in settings]
+    tf_idf_stacked = np.vstack(mean_matrices)
+    pca = PCA(n_components=n_components)
+    pca.fit(tf_idf_stacked)
+
+    mean_traj = {
+        s: pca.transform(mean_tf_idf_per_setting[s])      # (T, n_components)
+        for s in settings
+    }
+    return mean_traj, pca
+
+def traj_variance_in_pca_space(runs_tf_idf_per_setting, pca):
+    """
+    runs_tf_idf_per_setting: dict[setting] -> list[np.ndarray] each (T, V)
+    pca: fitted PCA object
+    Returns:
+        std_traj: dict[setting] -> (T, D)
+        var_traj:  dict[setting] -> (T, D)
+    """
+    std_traj = {}
+    var_traj = {}
+
+    for setting, run_mats in runs_tf_idf_per_setting.items():
+        # run_mats: list of (T, V), all with same T by construction
+
+        # project each run into PCA space
+        run_trajs = [pca.transform(M) for M in run_mats]   # each (T, D)
+
+        stacked = np.stack(run_trajs, axis=0)             # (R, T, D)
+        var_traj[setting]  = stacked.var(axis=0)          # (T, D)
+        std_traj[setting] = stacked.std(axis=0)           # (T, D)
+
+    return std_traj, var_traj

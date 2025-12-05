@@ -200,7 +200,7 @@ def run_simulation(args, pipe=None):
                                                              enforce_ngrams=args.enforce_ngrams)
     return network, running_fracs, fracs_dist_step
 
-def update_existing_network(pipe, args):
+def update_existing_network(pipe, args, state= 'basis'):
     '''Update an existing network from a file path.
     Args:
         file_path (str): Path to the saved network file.
@@ -226,7 +226,7 @@ def update_existing_network(pipe, args):
     if args.save:
         file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
         print(f"Network properties saved to {file_output_path}")
-    networks = [network]
+    networks = [(state, network)]
     return networks, running_fracs, fracs_dist_step
 
 def retrieve_existing_net(args):
@@ -259,7 +259,7 @@ def retrieve_existing_net(args):
     file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
     return file_path
 
-def generate_new_net(args, pipe, save_network=True):
+def generate_new_net(args, pipe, state= 'basis',  save_network=True):
     '''Wrapper to generate a new network and run the simulation.
     Args:
         args: Argument namespace containing network parameters.
@@ -275,11 +275,11 @@ def generate_new_net(args, pipe, save_network=True):
         file_output_path = ri.read_out_network_properties(network, args.seed, fracs_dist_step, running_fracs, enforce_ngrams=args.enforce_ngrams, depressed=args.depressed)
         print(f"Network properties saved to {file_output_path}")
 
-    networks = [network]
+    networks = [(state, network)]
 
     return networks, running_fracs, fracs_dist_step
 
-def retrieve_spcific_net(args, states, pipe): 
+def retrieve_spcific_net(args, states, seedjes, pipe): 
     '''Wrapper to retrieve specific networks based on different states.
     Args:
         args: Argument namespace containing network parameters.
@@ -290,13 +290,18 @@ def retrieve_spcific_net(args, states, pipe):
     '''
     networks = []
     for state in states:
-        args.enforce_ngrams = (state == "enforced_ngrams")
-        args.depressed = (state == "depressed")
-        file_path = retrieve_existing_net(args)
 
-        # reload network from saved properties
-        network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe)
-        networks.append(network)
+        # one_seed for each run
+        for seed in seedjes:
+            args.seed = seed
+            args.enforce_ngrams = (state == "enforced_ngrams")
+            args.depressed = (state == "depressed")
+            file_path = retrieve_existing_net(args)
+
+            # reload network from saved properties
+            network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe)
+            networks.append((state, network))
+    # print(f"retrieved {len(networks)} networks")
     return networks, running_fracs, fracs_dist_step
 
 
@@ -306,7 +311,7 @@ if __name__ == "__main__":
     args = generate_parser()
 
     # experiment states
-    # states = ["basis", "depressed", "enforced_ngrams"]
+    
     # states = ["basis"]
 
     if args.depressed:
@@ -316,25 +321,45 @@ if __name__ == "__main__":
     else:
         states = ["basis"]
 
+    #experiment
+    states = ["basis", "depressed", "enforced_ngrams"]
+    seedjes = [42, 53]
     
-    if args.use_saved_network:
+    if args.use_saved_network is not None:
         # load in existing network and update if specified
-        networks, running_fracs, fracs_dist_step = retrieve_spcific_net(args, states, pipe)
+        networks, running_fracs, fracs_dist_step = retrieve_spcific_net(args, states, seedjes, pipe)
         if args.use_saved_network > 0:
             # run additional rounds
-            networks, running_fracs, fracs_dist_step = update_existing_network(pipe, args)
+            networks, running_fracs, fracs_dist_step = update_existing_network(pipe, args, state=states[0])
 
     else:
+        state = states[0]
         # generate new network
-        networks, running_fracs, fracs_dist_step = generate_new_net(args, pipe)
+        networks, running_fracs, fracs_dist_step = generate_new_net(args, pipe, state=state)
 
     network = networks[0]
 
     # plot TF-IDF PCA
-    # n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
+    n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     # global_tf_idf, _, _ = metrics.retrieve_tf_idf(networks, num_steps=100, shift=5, n_grams=n_grams)
-    # pca_runs = metrics.reduce_dimensionality(global_tf_idf, n_components=2)
-    # vis.plot_tf_idf_PCA(pca_runs, states, num_steps=100, shift=5, save= args.save)
+
+    setting_network = {}
+    for state, network in networks:
+        if state not in setting_network:
+            setting_network[state] = [network]
+        else:
+            setting_network[state].append(network)
+
+        
+        
+
+    meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, num_steps=100, shift=5)
+    mean_traj, pca = metrics.pca_on_means(meanvar_tf_idf_per_setting, n_components=2)
+    
+
+    std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
+    # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
+    vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
     
 
     # vis.plot_running_fracs(running_fracs, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
