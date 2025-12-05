@@ -83,3 +83,44 @@ def load_depressed_personas(filepath="data/depressed.csv", personass_to_load=1, 
 def load_personas_from_file(filepath="data/personas_10k.csv", personass_to_load=10, seed=42):
     df = pd.read_csv(filepath)
     return [row_to_persona(row) for _, row in df.sample(n=personass_to_load, replace=False, random_state=seed).iterrows()]
+
+
+def parse_phq9(row, dataset="H1"):
+    return {
+        "phq9_sumscore": row[f'{dataset}_PHQ9_sumscore'],
+        "depressive_symptoms": row[f'{dataset}_PHQ9_deprsymp'],
+        "diagnosis": row[f'{dataset}_MDD'],
+        "somber": row[f'{dataset}_WlbvSomber'],
+        "joylessness": row[f'{dataset}_WlbvGeenPlezier'],
+        "impaired_functioning": row[f'{dataset}_WlbvBelemmerd'],
+        "Freq_depressive_episodes": row[f'{dataset}_WlbvFreqPeriode'],
+        "Age_first_depressive_episode": row[f'{dataset}_WlbvLftdPeriode']
+    }
+
+def parse_phq9_cov(row):
+    return {
+    "interest_pleasure" : row["CovQ1_Depression_Enthusiasm"],
+    "down_depressed": row["CovQ1_Depression_Dejection"],
+    "insomnia": row["CovQ1_Depression_Insomnia"],
+    "tired": row["CovQ1_Depression_Lethargy"],
+    "appetite_loss": row["CovQ1_Depression_Appetite"],
+    "failure_guilt": row["CovQ1_Depression_Failure"],
+    "concentration_loss": row["CovQ1_Depression_Concentration"],
+    "voice_low": row["CovQ1_Depression_Voice"],
+    "nervousness": row["CovQ1_Depression_Nervousness"],
+    "suicide": row["CovQ1_Depression_Suicide"]
+    }
+
+def load_phq9(filepath="data/confidential/phq9.sav", personass_to_load=10, seed=42):
+    df = pd.read_spss(filepath)
+    # print(df.columns)
+    # print(df.columns[100:200])
+    filtered = df.dropna(subset=['H1_PHQ9_sumscore', 'H1_PHQ9_deprsymp'])
+    filtered.to_csv("data/confidential/phq9_filtered.csv", index=False)
+
+    
+    # print(df[ 'H2_PHQ9_sumscore', 'H2_PHQ9_deprsymp'])
+    return [parse_phq9(row) for _, row in filtered.sample(n=personass_to_load, replace=False, random_state=seed).iterrows()]
+
+# depressed_data = load_pghq9(personass_to_load=100)
+# print(depressed_data[:5])

@@ -51,7 +51,7 @@ def get_pipe():
     )
     return pipe
 
-def build_network(args, personas, depressed_personas=None):
+def build_network(args, personas, well_being, depressed_personas=None):
     '''Build network based on given arguments.
     Args:
         args: Argument namespace containing network parameters.
@@ -65,6 +65,7 @@ def build_network(args, personas, depressed_personas=None):
             m=args.m,
             num_agents=args.num_agents,
             seed=args.seed,
+            well_being= well_being,
             personas=personas,
             depressed_personas=depressed_personas,
             
@@ -77,6 +78,7 @@ def build_network(args, personas, depressed_personas=None):
             num_agents=args.num_agents,
             seed=args.seed,
             plot= True,
+            well_being= well_being,
             personas=personas,
             power_law=(args.net == "sdc"),
             depressed_personas=depressed_personas,
@@ -88,6 +90,7 @@ def build_network(args, personas, depressed_personas=None):
             num_agents=args.num_agents,
             seed=args.seed,
             personas=personas,
+            well_being= well_being,
             depressed_personas=depressed_personas,
         )
 
@@ -175,6 +178,8 @@ def run_simulation(args, pipe=None):
     # load personas
     if False:
         personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
+    
+    well_being = lp.load_phq9("data/confidential/phq9.sav", args.num_agents, seed=args.seed)
 
     # only load depressed personas if specified
     if args.depressed:
@@ -183,7 +188,7 @@ def run_simulation(args, pipe=None):
         depressed_personas = None
 
     # build network
-    network = build_network(args, personas=personas, depressed_personas=depressed_personas)
+    network = build_network(args, well_being=well_being, personas=personas, depressed_personas=depressed_personas)
 
     # run updates
     running_fracs, network, fracs_dist_step = update_network(network, 

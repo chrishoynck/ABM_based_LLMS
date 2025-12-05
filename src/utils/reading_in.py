@@ -43,10 +43,11 @@ def read_in_network_properties(file_path):
                 print(value)
                 raise
             parsed_agents = []
-            for agent_id, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
+            for agent_id, wellbeing, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
                 parsed_agents.append(
                     (
                         int(agent_id),
+                        wellbeing,
                         persona,
                         activation_state,
                         tweethistory,
@@ -90,7 +91,7 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
 
     # Collect agent and connection information
     for agent in network.all_agents:
-        agent_info.append((agent.ID, agent.persona, agent.activation_state, 
+        agent_info.append((agent.ID, agent.wellbeing, agent.persona, agent.activation_state, 
                            agent.tweethistory, agent.active_tweethistory[-5:],
                            agent.distorted_tweets[-5:], agent.frac_distorted_neigh))
     for conn in network.connections:
@@ -226,11 +227,12 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
     # Restore agents
     # (agent_id, persona, activation_state,
     #  tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
-    for (agent_id, persona, activation_state,
+    for (agent_id, wellbeing, persona, activation_state,
          tweethistory, active_tweethistory,
          distorted_tweethistory, frac_distorted_neigh) in props["Agents"]:
 
         ag = id_to_agent[agent_id]
+        ag.well_being = wellbeing
         ag.persona = persona
         ag.activation_state = activation_state
         ag.tweethistory = list(tweethistory)

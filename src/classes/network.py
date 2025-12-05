@@ -17,7 +17,7 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, starting_distribution=0.5, directed=False, seed=None, personas = None):
+    def __init__(self, num_agents=200, starting_distribution=0.5, directed=False, seed=None, well_being = None, personas = None):
         """
         Initialize the network with a specified number of agents, mean, correlation, starting distribution, update fraction, and seed.
 
@@ -30,6 +30,7 @@ class _Network:
             iterations (int): The number of iterations the network has been updated.
             activated (set): The set of activated agents.
             rng (np.random.Generator): The random number generator.
+            well_being (list): The list of well-being scores for the agents.
             alterations (int): The number of alterations made to the network in each round.
             new_edge (list): The list of new edges added to the network.
             removed_edge (list): The list of edges removed from the network.
@@ -48,10 +49,13 @@ class _Network:
         self.removed_edge = []
 
         personas = self.rng.permutation(personas) if personas is not None else [None]*num_agents
+        self.well_being = self.rng.permutation(well_being) if well_being is not None else [None]*num_agents
 
         # create agents
-        self.agentsD = [Agent(i, rng=np.random.default_rng(seed + i), persona=personas[i]) for i in range(int(num_agents * starting_distribution))]
-        self.agentsH = [Agent(i + len(self.agentsD), rng=np.random.default_rng(seed + i + len(self.agentsD)), persona = personas[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
+        self.agentsD = [Agent(i, rng=np.random.default_rng(seed + i), persona=personas[i], 
+                              well_being=self.well_being[i]) for i in range(int(num_agents * starting_distribution))]
+        self.agentsH = [Agent(i + len(self.agentsD), rng=np.random.default_rng(seed + i + len(self.agentsD)), 
+                              persona = personas[i + len(self.agentsD)], well_being=self.well_being[i + len(self.agentsD)]) for i in range(int(num_agents * (1 - starting_distribution)))]
         self.connections = set()
         self.all_agents = self.agentsD + self.agentsH
 
@@ -587,10 +591,12 @@ class SocialDistanceAttachment(_Network):
     def generate_connections(self, power_law=False):
         ''' Generate connections based on social distance attachment.
         ''' 
+
         total_degree = 0
         n = len(self.all_agents)
         if power_law:
             stud_list = self.generate_stub_list(n, gamma=2.5, degree=self.degree)
+            print(f"Generated stub list with mean degree {np.mean(stud_list):.2f}")
             P, _ = self.sda_graph(n)
             adjacency = self.network_powerlaw(P, stud_list)
         else:
@@ -700,7 +706,8 @@ class SocialDistanceAttachment(_Network):
                 if stud_list[agent2_ID] == 0:
                     P[agent2_ID, :] = 0.0
                     P[:, agent2_ID] = 0.0
-            
+        
+        print("leftowving stubs after powerlaw network generation:", np.sum(stud_list))
         return A
     
     def verify_scale_free_distribution(self, plot):

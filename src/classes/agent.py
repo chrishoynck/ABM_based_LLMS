@@ -7,7 +7,7 @@ class Agent:
     The agent can be in one of two states: activated or not activated.
     The agent can also be a sampler, which means that it will always respond to a piece of news, regardless of the response threshold.
     """
-    def __init__(self, ID, rng=None, persona=None):
+    def __init__(self, ID, rng=None, persona=None, well_being=None):
         """
         Initialize the agent.
 
@@ -27,7 +27,7 @@ class Agent:
         self._next_last_tweet: str  = "NO_TWEET"
         # self.response_threshold = rng.random() if rng else np.random.random()
         self.persona = persona
-
+        self.well_being = well_being
         # Additional attributes for LLM interaction
         self.rng = rng if rng else np.random.default_rng()
 
@@ -42,6 +42,24 @@ class Agent:
         self.active_tweethistory = []
         self.frac_distorted_neigh = 0
 
+    @staticmethod
+    def phq9_severity_category(score: float) -> str:
+        """Map PHQ-9 sumscore to a standard severity label."""
+        try:
+            s = float(score)
+        except (TypeError, ValueError):
+            return "unknown"
+
+        if s <= 4:
+            return "none/minimal"
+        elif s <= 9:
+            return "mild"
+        elif s <= 14:
+            return "moderate"
+        elif s <= 19:
+            return "moderately severe"
+        else:
+            return "severe"
 
     def persona_prompt(self):
         if self.persona is None:
@@ -52,7 +70,7 @@ class Agent:
         skills = ", ".join(p["skills"][:5]) if p["skills"] else "no specific skills"
 
         # combine the free-text persona + structured info
-        base = f"You are {p['name']}, {p['persona_text'].rstrip()}. "
+        base = f"You are {p['name']} " #, {p['persona_text'].rstrip()}. "
         extra = (
             f"You are {p['age']} years old, gender: {p['sex']},"
             f"Marital status: {p['marital_status']}, living in {p['city']}. "
@@ -60,6 +78,42 @@ class Agent:
             f"your hobbies include {hobbies}, and your key skills are {skills}."
         )
         return base + extra
+    
+    def well_being_prompt(self,well_being : dict):
+
+        """
+        Build a concise well-being prompt based on PHQ-9 and related fields.
+
+        Expects `well_being` to be the output of `parse_phq9`.
+        """
+        score = well_being.get("phq9_sumscore")
+        severity = Agent.phq9_severity_category(score)
+
+        dep_symp = well_being.get("depressive_symptoms")
+        diagnosis = well_being.get("diagnosis")
+        # freq_eps = well_being.get("Freq_depressive_episodes")
+        # age_first = well_being.get("Age_first_depressive_episode")
+
+        # Short flags
+        dep_flag = "screens positive" if dep_symp else "does not screen positive"
+        diag_flag = "has a history of MDD" if diagnosis else "has no recorded MDD diagnosis"
+
+        extra_bits = []
+        # if freq_eps is not None:
+        #     extra_bits.append(f"reported frequency of depressive episodes: {freq_eps}")
+        # if age_first is not None:
+        #     extra_bits.append(f"first episode around age {age_first}")
+
+        extra_txt = ". " + "; ".join(extra_bits) if extra_bits else ""
+
+        return (
+            f"Current well-being: PHQ-9 score {score} "
+            f"({severity} depression). The person {dep_flag} for clinically "
+            f"relevant depressive symptoms and {diag_flag}.{extra_txt}"
+        )
+
+
+
     
     def build_tweet_prompt(self, tokenizer, round_idx, neighbor_pairs, max_chars=240, force_active=False):
         # neighbor_pairs: list of (neighbor_id, last_text)
@@ -88,6 +142,7 @@ class Agent:
                        )
             user = (
                 f"Identity: {self.persona_prompt()}\n"
+                f"Well-being: {self.well_being_prompt(self.well_being)}\n"
                 f"Round: {round_idx}\n"
                 f"Your previous tweets:\n{own_block}\n"
             )
