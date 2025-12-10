@@ -108,7 +108,7 @@ class Agent:
 
         return (
             f"Current well-being: PHQ-9 score {score} "
-            f"({severity} depression). The person {dep_flag} for clinically "
+            f"({severity} depression). The person {dep_flag} for clinically depression"
             f"relevant depressive symptoms and {diag_flag}.{extra_txt}"
         )
 

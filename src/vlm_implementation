@@ -6,7 +6,7 @@ import inspect
 from vllm import LLM, SamplingParams
 # from src.classes.agent import Agent
 import utils.metrics as metrics
-from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
+from classes.vllm_networks import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
 import utils.load_personas as lp
 import utils.visualization as vis
 import utils.reading_in as ri
@@ -51,20 +51,20 @@ def get_llm():
     )
     return llm
 
-def get_pipe():
-    # Pipeline configuration
-    pipe = pipeline(
-    "text-generation",
-    model=MODEL_ID,
-    tokenizer=tokenizer,
-    # local_files_only = True,
-    torch_dtype=DTYPE,
-    device_map="auto",                        # shard/assign automatically
-    trust_remote_code=True,
-    max_new_tokens=256,
-    return_full_text=False,                        
-    )
-    return pipe
+# def get_pipe():
+#     # Pipeline configuration
+#     pipe = pipeline(
+#     "text-generation",
+#     model=MODEL_ID,
+#     tokenizer=tokenizer,
+#     # local_files_only = True,
+#     torch_dtype=DTYPE,
+#     device_map="auto",                        # shard/assign automatically
+#     trust_remote_code=True,
+#     max_new_tokens=256,
+#     return_full_text=False,                        
+#     )
+#     return pipe
 
 def build_network(args, personas, well_being, depressed_personas=None):
     '''Build network based on given arguments.
@@ -321,11 +321,9 @@ def retrieve_spcific_net(args, states, seedjes, pipe):
 
 if __name__ == "__main__":
 
-    if USE_VLLM:
-        llm = get_llm()
-        pipe = llm
-    else:
-        pipe = get_pipe()
+
+    llm = get_llm()
+    pipe = llm
     # keep CLI behavior
     args = generate_parser()
 
