@@ -373,14 +373,9 @@ class ScaleFreeNetwork(_Network):
         # Step 1: Pick m initial agents and fully connect them
         #m0_agents = self.rng.choice(self.all_agents, self.m, replace=False)  # Use self.rng.choice for reproducibility
 
-        m1 = int(self.m/2)
-        if self.m %2 == 0:
-            m2 = int(self.m/2)
-        else:
-            m2 = int(self.m/2) + 1
-
         # balanced out hubs
-        m0_agents = np.concatenate([self.rng.choice(self.agentsD, m1, replace=False), self.rng.choice(self.agentsH, m2, replace=False)])
+        m0_agents = self.rng.choice(self.all_agents, self.m, replace=False)
+
 
         if self.m > 1:  # Fully connect seed agents only if m > 1
             for i in range(len(m0_agents)):

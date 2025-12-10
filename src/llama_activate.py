@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, BitsAndBytesConfig, set_seed, pipeline
 import os, torch
 import sys, argparse
 import inspect
-from vllm import LLM, SamplingParams
+# from vllm import LLM, SamplingParams
 # from src.classes.agent import Agent
 import utils.metrics as metrics
 from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
@@ -41,15 +41,15 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR, use_fas
 if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-def get_llm():
-    """Create a vLLM LLM engine instead of a HF pipeline."""
-    llm = LLM(
-        model=MODEL_ID,
-        dtype=DTYPE_STR,
-        trust_remote_code=True,
-        download_dir=CACHE_DIR,
-    )
-    return llm
+# def get_llm():
+#     """Create a vLLM LLM engine instead of a HF pipeline."""
+#     llm = LLM(
+#         model=MODEL_ID,
+#         dtype=DTYPE_STR,
+#         trust_remote_code=True,
+#         download_dir=CACHE_DIR,
+#     )
+#     return llm
 
 def get_pipe():
     # Pipeline configuration
@@ -321,11 +321,11 @@ def retrieve_spcific_net(args, states, seedjes, pipe):
 
 if __name__ == "__main__":
 
-    if USE_VLLM:
-        llm = get_llm()
-        pipe = llm
-    else:
-        pipe = get_pipe()
+    # if USE_VLLM:
+    #     llm = get_llm()
+    #     pipe = llm
+    # else:
+    pipe = get_pipe()
     # keep CLI behavior
     args = generate_parser()
 
