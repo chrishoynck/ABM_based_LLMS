@@ -5,7 +5,7 @@ import numpy as np
 import reading_in as ri
 
 
-def print_network(network):
+def print_network(network, path=""):
     """
     Print network at one single iteration
 
@@ -34,11 +34,11 @@ def print_network(network):
         font_size=10,
     )
 
-    plt.savefig("network_snapshot.png", dpi=300)
+    plt.savefig(f"{path}/network_snapshot.png", dpi=300)
     plt.show()
     return 
 
-def print_network_phq9(network):
+def print_network_phq9(network, path=""):
     """
     Print network at one single iteration
 
@@ -98,12 +98,12 @@ def print_network_phq9(network):
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, label='PHQ-9 Score')
     
-    plt.savefig("network_snapshot.png", dpi=300)
+    plt.savefig(f"{path}/network_snapshot.png", dpi=300)
     plt.show()
     return 
 
 
-def distorted_info(cds_info):
+def distorted_info(cds_info, path=""):
     '''
     This function bins fractions of distorted neighbors, and plots the probability corresponding to that to tweet.
     Args:
@@ -143,17 +143,11 @@ def distorted_info(cds_info):
     plt.legend()
     plt.ylim(0, 1)
     plt.grid(alpha=0.3, axis="y")
+    plt.savefig(f"{path}/distorted_info.png", dpi=300)
     plt.show()
 
 def plot_distorted_fracs(frac_distorted_this_step, 
-                         m=0, 
-                         p=0.0, 
-                         enforced_ngrams=False, 
-                         depressed=False, 
-                         type_nn='rand',
-                         dim=2, 
-                         alpha=1.0,
-                         degree=3):
+                         path=""):
     '''
     This function plots the fraction of distorted tweets per round.
     Args:
@@ -165,21 +159,12 @@ def plot_distorted_fracs(frac_distorted_this_step,
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
 
-    path = ri.plot_path(enforced_ngrams, depressed, type_nn, m, p, dim, alpha, degree)
-
     plt.savefig(f"{path}/distorted_step_fracs_3.png", dpi=300)
     plt.show()
 
 
 def plot_running_fracs(running_fracs, 
-                         m=0, 
-                         p=0.0, 
-                         enforced_ngrams=False, 
-                         depressed=False, 
-                         type_nn='rand',
-                         dim=2, 
-                         alpha=1.0,
-                         degree=3):
+                        path=""):
     '''
     This function plots the running mean fraction of distorted tweets over rounds.
     Args:
@@ -190,9 +175,7 @@ def plot_running_fracs(running_fracs,
     plt.ylabel("Mean fraction of distorted active tweets (all agents)")
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
-  
 
-    path = ri.plot_path(enforced_ngrams, depressed, type_nn, m, p, dim, alpha, degree)
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -203,10 +186,7 @@ def plot_tf_idf_PCA(reduced_runs,
                     states, 
                     num_steps=100, 
                     shift=5, 
-                    network=None,
-                    enforced_ngrams=False, 
-                    depressed=False, 
-                    type_nn='rand',):
+                    path=""):
     '''
     This function plots the PCA-reduced TF-IDF data.
     Args:
@@ -225,7 +205,7 @@ def plot_tf_idf_PCA(reduced_runs,
     plt.ylabel("PCA Component 2")
     plt.legend()
     plt.grid(alpha=0.3)
-    path = ri.plot_path_from_net(network, enforced_ngrams, depressed, type_nn)
+
     plt.savefig(f"{path}/tf_idf_pca_window{num_steps}_shift{shift}_{len(states)}{states[0]}.png", bbox_inches='tight', dpi=300)
     plt.show()
 
@@ -233,9 +213,7 @@ def plot_tf_idf_PCA_runs(mean_traj,
                         std_traj=None, 
                         num_steps=100, 
                         shift=5, 
-                        network=None,
-                        save=False, 
-                        type_nn='rand',
+                        path="",
                         ):
     """
     Plot PCA-reduced TF-IDF trajectories.
@@ -274,7 +252,6 @@ def plot_tf_idf_PCA_runs(mean_traj,
         if setting == "depressed":
             depressed = True
     
-    path = ri.plot_path_from_net(network,enforced_ngrams, depressed, type_nn=type_nn)
     plt.xlabel("PCA Component 1")
     plt.ylabel("PCA Component 2")
     plt.legend()
@@ -297,7 +274,7 @@ def check_degree_distribution(unique_degrees, frequencies):
     plt.ylabel('Frequency')
     plt.show()
 
-def plot_tweet_frequency(mean_freqs, network, nn_type, var_freqs, window_size=5):
+def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path=""):
     """
     Plot the mean tweet frequency over time with variance as a shaded region.
 
@@ -324,6 +301,6 @@ def plot_tweet_frequency(mean_freqs, network, nn_type, var_freqs, window_size=5)
     plt.legend()
     plt.grid(alpha=0.3)
     
-    path = ri.plot_path_from_net(network, False, False, type_nn=nn_type)
-    plt.savefig(f"{path}/tweet_freq_window{window_size}.png", dpi=300)
+
+    plt.savefig(f"{file_path}/tweet_freq_window{window_size}.png", dpi=300)
     plt.show()
