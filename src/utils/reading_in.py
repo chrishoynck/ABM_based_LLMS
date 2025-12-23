@@ -1,4 +1,5 @@
-from classes.network import RandomNetwork, ScaleFreeNetwork
+from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
+from utils.path_manager import PathManager
 import ast, torch, os
 import numpy as np
 
@@ -45,14 +46,13 @@ def read_in_network_properties(file_path):
         
             parsed_agents = []
             
-            # ADD WELLBEING
-            for agent_id, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
+            # ADD WELLBEING -> DONE
+            for agent_id, wellbeing, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
                 parsed_agents.append(
                     (
                         int(agent_id),
-                        # wellbeing,
+                        wellbeing,
                         persona,
-                        # well_being,
                         activation_state,
                         tweethistory,
                         active_tweethistory,
@@ -93,10 +93,10 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
     agent_info = []
     connection_IDs = []
 
-    # ADD WELLBEING
+    # ADD WELLBEING ->> DONE
     # Collect agent and connection information
     for agent in network.all_agents:
-        agent_info.append((agent.ID, agent.persona, agent.activation_state, 
+        agent_info.append((agent.ID, agent.well_being, agent.persona, agent.activation_state, 
                            agent.tweethistory, agent.active_tweethistory[-5:],
                            agent.distorted_tweets[-5:], agent.frac_distorted_neigh))
     for conn in network.connections:
@@ -116,15 +116,13 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
         "Agent_w_Highest_Deg": network.agent_w_highest_deg.ID,
     }
 
-
-
     # randomness:
     properties["Torch RNG State"] = network._torch_gen.get_state().tolist()
     properties["Network RNG State"] = network.rng.bit_generator.state
 
     # Add properties specific to RandomNetwork
     if isinstance(network, RandomNetwork):
-        network_type = "rand"
+        network_type = "r"
         properties["P value"] = network.p
         properties["Degree (k)"] = network.k
 
@@ -133,8 +131,15 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
         network_type = "sf"
         properties["Initial Edges (m)"] = network.m
         properties["Total Degree"] = network.total_degree
+    
+    # Else social distance attachment
+    elif isinstance(network, SocialDistanceAttachment):
+        network_type = "sdc" if network.sdc else "sda"
+        properties["Alpha"] = network.alpha
+        properties["Degree"] = network.degree
+        properties["Dimension"] = network.dim
     else:
-        print("Network should be either scale-free or random")
+        print("Network should be either scale-free, random, or social distance attachment")
 
     # enforced n-grams dominates depressed
     if enforce_ngrams:
@@ -144,17 +149,20 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
     else:
         state = "basis"
 
-    # save for scale free net
-    if network_type == "sf": 
-        if str(network.m) not in os.listdir(f"data/networks/{state}/sf"):
-            os.mkdir(f"data/networks/{state}/sf/{network.m}")
-        file_output_path = f"data/networks/{state}/sf/{network.m}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
+    # # save for scale free net
+    # if network_type == "sf": 
+    #     if str(network.m) not in os.listdir(f"data/networks/{state}/sf"):
+    #         os.mkdir(f"data/networks/{state}/sf/{network.m}")
+    #     file_output_path = f"data/networks/{state}/sf/{network.m}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
     
-    # save for random net
-    else:
-        if str(network.p).replace(".", "_") not in os.listdir(f"data/networks/{state}/rand"):
-            os.mkdir(f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}")
-        file_output_path = f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
+    # # save for random net
+    # else:
+    #     if str(network.p).replace(".", "_") not in os.listdir(f"data/networks/{state}/rand"):
+    #         os.mkdir(f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}")
+    #     file_output_path = f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
+
+    path_manager = PathManager(network=network)
+    file_output_path = path_manager.get_full_network_path()
 
     with open(file_output_path, "w", encoding="utf-8") as file:
         file.write("Network Properties\n")
@@ -164,7 +172,7 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
     return file_output_path
 
 
-def generate_network(file_path, pipe):
+def generate_network(args, pipe):
     """
     Load a single network from a saved properties file created by get_network_properties.
 
@@ -179,6 +187,8 @@ def generate_network(file_path, pipe):
     Returns:
         network: A reconstructed RandomNetwork or ScaleFreeNetwork instance.
     """
+
+    file_path = retrieve_existing_net(args)
     props = read_in_network_properties(file_path)
     
     # metric
@@ -230,14 +240,13 @@ def generate_network(file_path, pipe):
     # (agent_id, persona, activation_state,
     #  tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
 
-
-    # ADD WELLBEING
-    for (agent_id, persona, activation_state,
+    # ADD WELLBEING -> DONE
+    for (agent_id, wellbeing, persona, activation_state,
          tweethistory, active_tweethistory,
          distorted_tweethistory, frac_distorted_neigh) in props["Agents"]:
 
         ag = id_to_agent[agent_id]
-        # ag.well_being = wellbeing
+        ag.well_being = wellbeing
         ag.persona = persona
         ag.activation_state = activation_state
         ag.tweethistory = list(tweethistory)
@@ -263,7 +272,65 @@ def generate_network(file_path, pipe):
     return network, distorted_fracs, dist_per_step
 
 
+def retrieve_existing_net(args):
+    '''Retrieve file path for existing network based on arguments.
+    Args:
+        args: Argument namespace containing network parameters.
+    Returns:
+        file_path (str): Path to the saved network file.
+    '''
+    if args.enforce_ngrams:
+        state = "enforced_ngrams"
+    elif args.depressed:
+        state = "depressed"
+    else:
+        state = "basis"
+    
+    if args.net == "sf":
+        what_network = "sf"
+        parameter = f'{args.m}'
+    elif args.net == "sda":
+        what_network = "sda"
+        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
+    elif args.net == "sdc":
+        what_network = "sdc"
+        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
+    else:
+        parameter = f'{str(args.p).replace(".", "_")}'
+        what_network = "r"
+    
+    file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
+    return file_path
 
+def plot_path_from_net(network, enforced_ngrams=None, depressed=None, type_nn='r'):
+    path= plot_path(enforced_ngrams, depressed, type_nn, 
+                    m=getattr(network, 'm', None), 
+                    p=getattr(network, 'p', None), 
+                    dim=getattr(network, 'dim', None), 
+                    alpha=getattr(network, 'alpha', None), 
+                    degree=getattr(network, 'degree', None))
+    return path
 
+def plot_path(enforced_ngrams, depressed, type_nn, m=None, p=None, dim=None, alpha=None, degree=None):
+    if enforced_ngrams:
+        setting = "enforced_ngrams"
+    elif depressed:
+        setting = "depressed"
+    else:
+        setting = "basis"
 
+    if type_nn == 'sf':
+        parameter = f'{m}'
+    elif type_nn == 'r':
+        parameter = f'{str(p).replace(".", "_")}'
+    elif type_nn in ['sda', 'sdc']:
+        parameter = f'{alpha}_d{degree}_dim{dim}'.replace(".", "_")
+    else:
+        raise ValueError("Unknown network type for plotting path.")
+
+    path = f"plots/networks/{setting}/{type_nn}/{parameter}"
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    return path
     

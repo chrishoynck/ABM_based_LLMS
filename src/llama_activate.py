@@ -216,8 +216,8 @@ def update_existing_network(pipe, args, state= 'basis'):
         fracs_dist_step: List of fractions of distorted tweets per step.
     '''
     # reload network from saved properties
-    file_path = retrieve_existing_net(args)
-    network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe)
+
+    network, running_fracs, fracs_dist_step= ri.generate_network(args, pipe)
     running_fracs, network, fracs_dist_step = update_network(network, 
                                                              pipe=pipe, 
                                                              fracs_dist_step=[], 
@@ -233,35 +233,7 @@ def update_existing_network(pipe, args, state= 'basis'):
     networks = [(state, network)]
     return networks, running_fracs, fracs_dist_step
 
-def retrieve_existing_net(args):
-    '''Retrieve file path for existing network based on arguments.
-    Args:
-        args: Argument namespace containing network parameters.
-    Returns:
-        file_path (str): Path to the saved network file.
-    '''
-    if args.enforce_ngrams:
-        state = "enforced_ngrams"
-    elif args.depressed:
-        state = "depressed"
-    else:
-        state = "basis"
-    
-    if args.net == "sf":
-        what_network = "sf"
-        parameter = f'{args.m}'
-    elif args.net == "sda":
-        what_network = "sda"
-        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-    elif args.net == "sdc":
-        what_network = "sdc"
-        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-    else:
-        parameter = f'{str(args.p).replace(".", "_")}'
-        what_network = "rand"
-    
-    file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
-    return file_path
+
 
 def generate_new_net(args, pipe, state= 'basis'):
     '''Wrapper to generate a new network and run the simulation.
@@ -300,10 +272,9 @@ def retrieve_spcific_net(args, states, seedjes, pipe):
             args.seed = seed
             args.enforce_ngrams = (state == "enforced_ngrams")
             args.depressed = (state == "depressed")
-            file_path = retrieve_existing_net(args)
-
+         
             # reload network from saved properties
-            network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe)
+            network, running_fracs, fracs_dist_step= ri.generate_network(args, pipe)
             networks.append((state, network))
     # print(f"retrieved {len(networks)} networks")
     return networks, running_fracs, fracs_dist_step
@@ -311,17 +282,8 @@ def retrieve_spcific_net(args, states, seedjes, pipe):
 
 if __name__ == "__main__":
 
-    # if USE_VLLM:
-    #     llm = get_llm()
-    #     pipe = llm
-    # else:
     pipe = get_pipe()
-    # keep CLI behavior
     args = generate_parser()
-
-    # experiment states
-    
-    # states = ["basis"]
 
     if args.depressed:
         states = ["depressed"]
@@ -368,7 +330,12 @@ if __name__ == "__main__":
     vis.plot_tweet_frequency(mean_var_freqs['mean'], mean_var_freqs['variance'])
 
     #PCA
-    meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, num_steps=100, shift=5)
+    meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, 
+                                                                               num_steps=100, 
+                                                                               shift=5, 
+                                                                               networks=networks[0][0], 
+                                                                               type_nn=args.net)
+    
     mean_traj, pca = metrics.pca_on_means(meanvar_tf_idf_per_setting, n_components=2)
     std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)

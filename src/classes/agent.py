@@ -249,7 +249,7 @@ class Agent:
             self.distorted_tweets = self.distorted_tweets[-5:]
             self.active_tweethistory.append(tweetje)
             self.active_tweethistory = self.active_tweethistory[-5:]
-            distorted = True
+    
 
         self.tweethistory.append(self._next_last_tweet)
         self.last_tweet = self._next_last_tweet

@@ -315,6 +315,7 @@ def retrieve_spcific_net(args, states, seedjes, pipe):
             # reload network from saved properties
             network, running_fracs, fracs_dist_step= ri.generate_network(file_path, pipe)
             networks.append((state, network))
+
     # print(f"retrieved {len(networks)} networks")
     return networks, running_fracs, fracs_dist_step
 
@@ -328,7 +329,6 @@ if __name__ == "__main__":
     args = generate_parser()
 
     # experiment states
-    
     # states = ["basis"]
 
     if args.depressed:

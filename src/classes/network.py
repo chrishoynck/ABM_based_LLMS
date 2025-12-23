@@ -16,7 +16,7 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, directed=False, seed=None, well_being = None, personas = None):
+    def __init__(self, num_agents=200, directed=False, seed=None, well_being = None, personas = None, state="basis"):
         """
         Initialize the network with a specified number of agents, mean, correlation, update fraction, and seed.
 
@@ -35,6 +35,7 @@ class _Network:
         self.iterations = 0
         self.activated = set()
         self.directed = directed
+        self.state = state
 
         self.rng = np.random.default_rng(seed)
         self.seed = seed
@@ -109,14 +110,12 @@ class _Network:
         """
         self.iterations += 1
         batch_size = 8
-
         prompts, agents_w_prompt = self._prepare_prompts(tokenizer, update_fraction)
 
         # seed this thing
         if True:
             self._ensure_torch_generator(pipe)
         
-
         # generate outputs in parallel
         out = self._generate_outputs(pipe, prompts, batch_size)
 
@@ -125,7 +124,6 @@ class _Network:
             agents_w_prompt, out, n_grams, distorted_tweets
         )
         return mean_distorted_frac, dist_this_step_norm
-
 
     def _prepare_prompts(self, tokenizer, update_fraction):
         """
@@ -209,7 +207,6 @@ class _Network:
                     raw_tweet=raw,
                 )
 
-        # self.cds_info = []
         # state update after all agents have decided
         distorted_this_step = 0
         distorted_fracs = []
@@ -514,10 +511,11 @@ class SocialDistanceAttachment(_Network):
         self.b = 0.0
         self.agent_positions = None
         self.degree = degree
+        self.sdc = power_law
         
-        self.initialize_network(depressed_personas=depressed_personas, power_law=power_law, plot=plot)
+        self.initialize_network(depressed_personas=depressed_personas, plot=plot)
 
-    def initialize_network(self, depressed_personas=None, power_law=False, plot=False):
+    def initialize_network(self, depressed_personas=None, plot=False):
         """
         Initialize the network based on social distance attachment.
         """
@@ -530,13 +528,13 @@ class SocialDistanceAttachment(_Network):
          # generate agent positions for distance calculations
         self.agent_positions = self.sample_positions(len(self.all_agents), space_type=self.dist_type, phq9_scores=phq9_scores)
         self.dist_matrix = cdist(self.agent_positions, self.agent_positions)
-        print("Distance matrix:", self.dist_matrix)
+        # print("Distance matrix:", self.dist_matrix)
         print("N =", len(self.all_agents), "target degree =", self.degree, "max possible =", len(self.all_agents)-1)
         np.fill_diagonal(self.dist_matrix, np.inf)
 
         # find b parameter for target expected degree
         self.b = self.find_b_for_target_Ek()
-        self.generate_connections(power_law=power_law)
+        self.generate_connections()
 
         if depressed_personas is not None:
             # currently one persona in data 
@@ -608,7 +606,7 @@ class SocialDistanceAttachment(_Network):
                 positions = phq9_norm
             else:
                 positions = np.hstack((positions, phq9_norm))
-        print(positions)
+        # print(positions)
         return positions
 
     @staticmethod
@@ -672,13 +670,13 @@ class SocialDistanceAttachment(_Network):
 
         return P, A
     
-    def generate_connections(self, power_law=False):
+    def generate_connections(self):
         ''' Generate connections based on social distance attachment.
         ''' 
 
         total_degree = 0
         n = len(self.all_agents)
-        if power_law:
+        if self.sdc:
             stud_list = self.generate_stub_list(n, gamma=2.5, degree=self.degree)
             print(f"Generated stub list with mean degree {np.mean(stud_list):.2f}")
             P, _ = self.sda_graph(n)

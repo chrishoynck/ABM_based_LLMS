@@ -87,6 +87,7 @@ def load_personas_from_file(filepath="data/personas_10k.csv", personass_to_load=
 
 def parse_phq9(row, dataset="H1"):
     return {
+        "age": row[f'{dataset}_lft'],
         "phq9_sumscore": row[f'{dataset}_PHQ9_sumscore'],
         "depressive_symptoms": row[f'{dataset}_PHQ9_deprsymp'],
         "diagnosis": row[f'{dataset}_MDD'],
@@ -113,7 +114,7 @@ def parse_phq9_cov(row):
 
 def load_phq9(filepath="data/confidential/phq9.sav", personass_to_load=10, seed=42):
     df = pd.read_spss(filepath)
-    # print(df.columns)
+    print(df.columns)
     # print(df.columns[100:200])
     filtered = df.dropna(subset=['H1_PHQ9_sumscore', 'H1_PHQ9_deprsymp'])
     filtered.to_csv("data/confidential/phq9_filtered.csv", index=False)
@@ -124,3 +125,18 @@ def load_phq9(filepath="data/confidential/phq9.sav", personass_to_load=10, seed=
 
 # depressed_data = load_pghq9(personass_to_load=100)
 # print(depressed_data[:5])
+
+def write_phq9_to_file(filepath= "data/phq9/mood_data.csv", personas_to_write=1000):
+    '''
+    Write PHQ-9 data to CSV file
+    Args:
+        filepath (str): Path to the output CSV file
+        personas_to_write (int): Number of personas to write
+    '''
+    data = load_phq9(personass_to_load=personas_to_write)
+    panda_data = pd.DataFrame(data)
+    panda_data.to_csv(filepath, index=False)
+
+
+if __name__ == "__main__":
+    write_phq9_to_file()
