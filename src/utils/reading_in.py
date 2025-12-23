@@ -187,8 +187,8 @@ def generate_network(args, pipe):
     Returns:
         network: A reconstructed RandomNetwork or ScaleFreeNetwork instance.
     """
-
-    file_path = retrieve_existing_net(args)
+    pm = PathManager(args=args)
+    file_path = pm.get_full_network_path()
     props = read_in_network_properties(file_path)
     
     # metric
@@ -272,65 +272,65 @@ def generate_network(args, pipe):
     return network, distorted_fracs, dist_per_step
 
 
-def retrieve_existing_net(args):
-    '''Retrieve file path for existing network based on arguments.
-    Args:
-        args: Argument namespace containing network parameters.
-    Returns:
-        file_path (str): Path to the saved network file.
-    '''
-    if args.enforce_ngrams:
-        state = "enforced_ngrams"
-    elif args.depressed:
-        state = "depressed"
-    else:
-        state = "basis"
+# def retrieve_existing_net(args):
+#     '''Retrieve file path for existing network based on arguments.
+#     Args:
+#         args: Argument namespace containing network parameters.
+#     Returns:
+#         file_path (str): Path to the saved network file.
+#     '''
+#     if args.enforce_ngrams:
+#         state = "enforced_ngrams"
+#     elif args.depressed:
+#         state = "depressed"
+#     else:
+#         state = "basis"
     
-    if args.net == "sf":
-        what_network = "sf"
-        parameter = f'{args.m}'
-    elif args.net == "sda":
-        what_network = "sda"
-        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-    elif args.net == "sdc":
-        what_network = "sdc"
-        parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-    else:
-        parameter = f'{str(args.p).replace(".", "_")}'
-        what_network = "r"
+#     if args.net == "sf":
+#         what_network = "sf"
+#         parameter = f'{args.m}'
+#     elif args.net == "sda":
+#         what_network = "sda"
+#         parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
+#     elif args.net == "sdc":
+#         what_network = "sdc"
+#         parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
+#     else:
+#         parameter = f'{str(args.p).replace(".", "_")}'
+#         what_network = "r"
     
-    file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
-    return file_path
+#     file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
+#     return file_path
 
-def plot_path_from_net(network, enforced_ngrams=None, depressed=None, type_nn='r'):
-    path= plot_path(enforced_ngrams, depressed, type_nn, 
-                    m=getattr(network, 'm', None), 
-                    p=getattr(network, 'p', None), 
-                    dim=getattr(network, 'dim', None), 
-                    alpha=getattr(network, 'alpha', None), 
-                    degree=getattr(network, 'degree', None))
-    return path
+# def plot_path_from_net(network, enforced_ngrams=None, depressed=None, type_nn='r'):
+#     path= plot_path(enforced_ngrams, depressed, type_nn, 
+#                     m=getattr(network, 'm', None), 
+#                     p=getattr(network, 'p', None), 
+#                     dim=getattr(network, 'dim', None), 
+#                     alpha=getattr(network, 'alpha', None), 
+#                     degree=getattr(network, 'degree', None))
+#     return path
 
-def plot_path(enforced_ngrams, depressed, type_nn, m=None, p=None, dim=None, alpha=None, degree=None):
-    if enforced_ngrams:
-        setting = "enforced_ngrams"
-    elif depressed:
-        setting = "depressed"
-    else:
-        setting = "basis"
+# def plot_path(enforced_ngrams, depressed, type_nn, m=None, p=None, dim=None, alpha=None, degree=None):
+#     if enforced_ngrams:
+#         setting = "enforced_ngrams"
+#     elif depressed:
+#         setting = "depressed"
+#     else:
+#         setting = "basis"
 
-    if type_nn == 'sf':
-        parameter = f'{m}'
-    elif type_nn == 'r':
-        parameter = f'{str(p).replace(".", "_")}'
-    elif type_nn in ['sda', 'sdc']:
-        parameter = f'{alpha}_d{degree}_dim{dim}'.replace(".", "_")
-    else:
-        raise ValueError("Unknown network type for plotting path.")
+#     if type_nn == 'sf':
+#         parameter = f'{m}'
+#     elif type_nn == 'r':
+#         parameter = f'{str(p).replace(".", "_")}'
+#     elif type_nn in ['sda', 'sdc']:
+#         parameter = f'{alpha}_d{degree}_dim{dim}'.replace(".", "_")
+#     else:
+#         raise ValueError("Unknown network type for plotting path.")
 
-    path = f"plots/networks/{setting}/{type_nn}/{parameter}"
-    if not os.path.exists(path):
-        os.makedirs(path)
+#     path = f"plots/networks/{setting}/{type_nn}/{parameter}"
+#     if not os.path.exists(path):
+#         os.makedirs(path)
     
-    return path
+#     return path
     

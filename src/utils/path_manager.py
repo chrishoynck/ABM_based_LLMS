@@ -20,7 +20,7 @@ class PathManager:
         elif network:
             self.net_type = self._infer_net_type(network)
             self.params = self._get_params_from_net(network)
-            self.state = "basis" # Default, or need to store state in network obj
+            self.state = network.state # Default, or need to store state in network obj
             self.num_agents = len(network.all_agents)
             self.seed = network.seed # Assuming seed is stored
             self.rounds = network.iterations # Or initial rounds
