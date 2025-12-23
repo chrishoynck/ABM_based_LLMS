@@ -28,7 +28,7 @@ def read_in_network_properties(file_path):
             properties[key] = [(int(a), int(b)) for a, b in connections]
         elif key == "CDS Info":
             cds_info = ast.literal_eval(value)
-            properties[key] = [(float(frac_neigh), bool(act_agent)) for frac_neigh, act_agent in cds_info]
+            properties[key] = [(float(frac_neigh), bool(act_agent), bool(distorted)) for frac_neigh, act_agent, distorted in cds_info]
         elif key in ("Network RNG State", "Torch RNG State"):
             properties[key] = ast.literal_eval(value)
         elif key == "Agents":
@@ -46,13 +46,13 @@ def read_in_network_properties(file_path):
             parsed_agents = []
             
             # ADD WELLBEING
-            for agent_id, persona, well_being, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
+            for agent_id, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
                 parsed_agents.append(
                     (
                         int(agent_id),
                         # wellbeing,
                         persona,
-                        well_being,
+                        # well_being,
                         activation_state,
                         tweethistory,
                         active_tweethistory,
@@ -93,9 +93,10 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
     agent_info = []
     connection_IDs = []
 
+    # ADD WELLBEING
     # Collect agent and connection information
     for agent in network.all_agents:
-        agent_info.append((agent.ID, agent.persona, agent.well_being, agent.activation_state, 
+        agent_info.append((agent.ID, agent.persona, agent.activation_state, 
                            agent.tweethistory, agent.active_tweethistory[-5:],
                            agent.distorted_tweets[-5:], agent.frac_distorted_neigh))
     for conn in network.connections:
@@ -163,7 +164,7 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
     return file_output_path
 
 
-def generate_network(file_path, pipe, starting_distribution=0.5):
+def generate_network(file_path, pipe):
     """
     Load a single network from a saved properties file created by get_network_properties.
 
@@ -174,7 +175,6 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
 
     Args:
         file_path (str): Path to the saved properties file.
-        starting_distribution (str): Whatever you passed originally to the constructor.
 
     Returns:
         network: A reconstructed RandomNetwork or ScaleFreeNetwork instance.
@@ -196,7 +196,6 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
         p = props["P value"]
         network = RandomNetwork(
             num_agents=num_agents,
-            starting_distribution=starting_distribution,
             seed=seed,
             p=p,
         )
@@ -206,7 +205,6 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
         network = ScaleFreeNetwork(
             num_agents=num_agents,
             m=m,
-            starting_distribution=starting_distribution,
             seed=seed,
         )
     else:
@@ -234,12 +232,12 @@ def generate_network(file_path, pipe, starting_distribution=0.5):
 
 
     # ADD WELLBEING
-    for (agent_id, persona, wellbeing, activation_state,
+    for (agent_id, persona, activation_state,
          tweethistory, active_tweethistory,
          distorted_tweethistory, frac_distorted_neigh) in props["Agents"]:
 
         ag = id_to_agent[agent_id]
-        ag.well_being = wellbeing
+        # ag.well_being = wellbeing
         ag.persona = persona
         ag.activation_state = activation_state
         ag.tweethistory = list(tweethistory)

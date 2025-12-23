@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from classes.agent import Agent
 from scipy.spatial.distance import cdist
-from vllm import SamplingParams
 from powerlaw import Fit
 
 import bisect as bs_norm
@@ -86,7 +85,7 @@ class _Network:
             if not self.directed:
                 self.connections.remove((agent2, agent1))
 
-    def inference_w_batches(self,pipe, prompts, vllm_params, batch_size, **gen_kwargs):
+    def inference_w_batches(self,pipe, prompts, batch_size, **gen_kwargs):
         """
         Run LLM pipeline on a list of prompts in mini-batches.
         Returns a flat list of outputs, same order as prompts.
@@ -100,9 +99,6 @@ class _Network:
                 batch_prompts = prompts[i:i + batch_size]
                 batch_outputs = pipe(batch_prompts, **gen_kwargs)
                 all_outputs.extend(batch_outputs)
-        else:
-            # vLLM batching
-            all_outputs = pipe.generate(prompts, vllm_params)
             
 
         return all_outputs
@@ -187,20 +183,8 @@ class _Network:
             max_new_tokens=256,
             kwargs={"generator": self._torch_gen},
         )
-
-        # vLLM sampling parameters (seeded once for reproducibility)
-        if not hasattr(self, "_vllm_sampling_params"):
-            self._vllm_sampling_params = SamplingParams(
-                temperature=0.8,
-                top_p=0.95,
-                max_tokens=256,
-                n=1,
-                seed=self.seed,
-        )
-
-        out = self.inference_w_batches(pipe, prompts, batch_size=batch_size, vllm_params = self._vllm_sampling_params, **gen_kwargs)
+        out = self.inference_w_batches(pipe, prompts, batch_size=batch_size, **gen_kwargs)
         return out
-
 
     def _apply_outputs_and_update_state(self, agents_w_prompt, out, n_grams, distorted_tweets):
         """
@@ -219,10 +203,7 @@ class _Network:
                 )
             # PREPAREE FOR VLLM
             else:
-                if False:
-                    raw = tweet.outputs[0].text.strip()
-                else:
-                    raw = tweet[0]["generated_text"].strip()
+                raw = tweet[0]["generated_text"].strip()
                 agent.send_tweet(
                     max_chars=240,
                     raw_tweet=raw,
@@ -234,8 +215,8 @@ class _Network:
         distorted_fracs = []
         num_active_agents = 0
         for agent in self.all_agents:
-            agent.commit(n_grams=n_grams)
-            self.cds_info.append((agent.frac_distorted_neigh, agent.activation_state))
+            distorted = agent.commit(n_grams=n_grams)
+            self.cds_info.append((agent.frac_distorted_neigh, agent.activation_state, distorted))
             if agent.activation_state:
                 num_active_agents += 1
 
@@ -521,7 +502,7 @@ class SocialDistanceAttachment(_Network):
     This class represents a social distance attachment network of agents.
     It inherits from the _Network class and initializes the network by connecting agents based on social distance.
     """
-    def __init__(self, alpha, dim, degree, power_law=False, plot=False, depressed_personas=None, dist_type= "uniform", **kwargs):
+    def __init__(self, alpha, dim, degree, power_law=False, plot=False, depressed_personas=None, dist_type= "gaussian_clusters", **kwargs):
         """
         Initialize the network by connecting agents based on social distance.
         """
@@ -541,9 +522,16 @@ class SocialDistanceAttachment(_Network):
         Initialize the network based on social distance attachment.
         """
 
-        # generate agent positions for distance calculations
-        self.agent_positions = self.sample_positions(len(self.all_agents), space_type=self.dist_type)
+        # retrieve phq9 scores if available
+        phq9_scores = []
+        if any(agent.well_being and "phq9_sumscore" in agent.well_being for agent in self.all_agents):
+            phq9_scores = [agent.well_being.get("phq9_sumscore", 0) if agent.well_being else 0 for agent in self.all_agents]
+
+         # generate agent positions for distance calculations
+        self.agent_positions = self.sample_positions(len(self.all_agents), space_type=self.dist_type, phq9_scores=phq9_scores)
         self.dist_matrix = cdist(self.agent_positions, self.agent_positions)
+        print("Distance matrix:", self.dist_matrix)
+        print("N =", len(self.all_agents), "target degree =", self.degree, "max possible =", len(self.all_agents)-1)
         np.fill_diagonal(self.dist_matrix, np.inf)
 
         # find b parameter for target expected degree
@@ -557,31 +545,71 @@ class SocialDistanceAttachment(_Network):
 
         self.verify_scale_free_distribution(plot)
 
-    def sample_positions(self, N, space_type, n_clusters=4):
-        if space_type == "uniform":
-            # [0, 1]^m
-            return self.rng.random((N, self.dim))
+    def sample_positions(self, N, space_type, n_clusters=4, phq9_scores=[]):
+        """ Sample agent positions in a given space type.
+        Args:
+            N (int): number of agents
+            space_type (str): type of space to sample positions from
+            n_clusters (int): number of clusters for gaussian_clusters space type
+            phq9_scores (list): list of PHQ-9 scores for agents
+        Returns:
+            positions (np.ndarray): sampled positions of shape (N, dim)
+        """
 
-        if space_type == "gaussian_clusters":
-            # equally sized clusters
-            pts_per_cluster = N // n_clusters
-            rest = N - pts_per_cluster * n_clusters
-            sizes = [pts_per_cluster]*n_clusters
+        assert self.dim >= 0, "Dimension must be non-negative"
+        positions = None
+        
+        if self.dim > 0 and len(phq9_scores) > 0:
+            use_dim = self.dim - 1
+        else:
+            use_dim = self.dim
+        
+        # add additional dimension for phq9 scores if specified and dim > 1
+        if use_dim > 0:
+            if space_type == "uniform":
+                # [0, 1]^m
+                positions = self.rng.random((N, use_dim))
 
-            # assign remaining points
-            sizes[0] += rest
+            elif space_type == "gaussian_clusters":
+                # equally sized clusters
+                pts_per_cluster = N // n_clusters
+                rest = N - pts_per_cluster * n_clusters
+                sizes = [pts_per_cluster]*n_clusters
 
-            # generate centers of gaussians
-            centers = self.rng.uniform(-1, 1, size=(n_clusters, self.dim))
-            agent_points = []
-            for c, size in zip(centers, sizes):
-                # generate points around each center
-                agent_points.append(c + 0.1 * self.rng.standard_normal((size, self.dim)))
-            return np.vstack(agent_points)
-        if space_type == "lognormal":
-            return self.rng.lognormal(mean=0.0, sigma=1.0, size=(N, self.dim))
+                # assign remaining points
+                sizes[0] += rest
 
-        raise ValueError("unknown space_type")
+                # generate centers of gaussians
+                centers = self.rng.uniform(-1, 1, size=(n_clusters, use_dim))
+                agent_points = []
+                for c, size in zip(centers, sizes):
+                    # generate points around each center
+                    agent_points.append(c + 0.1 * self.rng.standard_normal((size, use_dim)))
+                positions = np.vstack(agent_points)
+            elif space_type == "lognormal":
+                positions = self.rng.lognormal(mean=0.0, sigma=1.0, size=(N, use_dim))
+            else:
+                raise ValueError("unknown space_type")
+            
+        # add phq9 as an additional dimension
+        if len(phq9_scores) > 0:
+
+            # make column array to stack later
+            phq9_array = np.array(phq9_scores).reshape(-1, 1)
+
+            # Normalize to [0, 1]
+            if phq9_array.max() > phq9_array.min():
+                phq9_norm = (phq9_array - phq9_array.min()) / (phq9_array.max() - phq9_array.min())
+            else:
+                phq9_norm = np.zeros_like(phq9_array)*0.5
+            
+            phq9_norm = 2*phq9_norm - 1  # scale to [-1, 1]
+            if positions is None:
+                positions = phq9_norm
+            else:
+                positions = np.hstack((positions, phq9_norm))
+        print(positions)
+        return positions
 
     @staticmethod
     def expected_degree_for_b(b, D, alpha):
@@ -619,11 +647,10 @@ class SocialDistanceAttachment(_Network):
         """ Generate a social distance attachment graph with N nodes in dim dimensions.
         Args:
             N (int): number of nodes
-            alpha (float): attachment exponent
-            space_type (str): type of space to sample positions from
+
         Returns:
             A (np.ndarray): adjacency matrix of the generated graph
-            X (np.ndarray): positions of the nodes
+            P (np.ndarray): positions of the nodes
         """
         
         

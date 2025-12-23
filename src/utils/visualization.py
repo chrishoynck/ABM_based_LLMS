@@ -11,7 +11,8 @@ def print_network(network):
     Args:
         network: The network object to visualize.
     """
-    color_map = ['lightblue'] * len(network.agentsD) + ['#FF6666'] * len(network.agentsH)
+    print("starting to visualize network...")
+    color_map = ['lightblue'] * len(network.all_agents)
     graph = nx.Graph()
     graph.add_nodes_from(range(len(network.all_agents)))
     graph.clear_edges()
@@ -35,6 +36,71 @@ def print_network(network):
     plt.show()
     return 
 
+def print_network_phq9(network):
+    """
+    Print network at one single iteration
+
+    Args:
+        network: The network object to visualize.
+    """
+    # Create color map based on PHQ-9 scores
+    node_colors = []
+    for agent in network.all_agents:
+        if agent.well_being and "phq9_sumscore" in agent.well_being:
+            score = agent.well_being["phq9_sumscore"]
+
+            # Normalize score (0-27) to 0-1 range for colormap
+            normalized_score = min(max(score / 27.0, 0.0), 1.0)
+            node_colors.append(normalized_score)
+        else:
+            # Default color (e.g., light blue) if no score is available
+            node_colors.append(0.0) # Map 0 to green/low score color
+    
+    graph = nx.Graph()
+    graph.add_nodes_from(range(len(network.all_agents)))
+    graph.clear_edges()
+    for connection in network.connections:
+        graph.add_edge(connection[0].ID, connection[1].ID)
+    
+    # Set positions and draw the graph
+    plt.figure(figsize=(8,8))
+    pos = nx.kamada_kawai_layout(graph, scale=0.6)
+    
+    # Use a colormap from green (low score) to red (high score)
+    cmap = plt.cm.RdYlGn_r 
+    ax = plt.gca()
+    if len(network.all_agents) <= 50:
+        font_size = 10
+        show_labels = True
+        node_size = 400
+    else:
+        font_size = max(2, 400 // len(network.all_agents))
+        node_size = max(20, 40000 // len(network.all_agents))
+        show_labels = False
+    nx.draw(
+        graph,
+        pos,
+        node_color=node_colors,
+        cmap=cmap,
+        vmin=0.0,
+        vmax=1.0,
+        with_labels=show_labels,
+        edge_color="lightgray",
+        width=0.2,
+        node_size=node_size,
+        font_size= font_size,
+    )
+    
+    # Add a colorbar to indicate the scale
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=27))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, label='PHQ-9 Score')
+    
+    plt.savefig("network_snapshot.png", dpi=300)
+    plt.show()
+    return 
+
+
 def distorted_info(cds_info):
     '''
     This function bins fractions of distorted neighbors, and plots the probability corresponding to that to tweet.
@@ -44,19 +110,23 @@ def distorted_info(cds_info):
     cds_info = np.array(cds_info)
     cds_frac = cds_info[:, 0]
     tweeted = cds_info[:, 1]
+    distorted = cds_info[:, 2]
     bins = 10
     bin_edges = np.linspace(0.0, 1.0, bins + 1)
     bin_idx = np.digitize(cds_frac, bin_edges, right=True) - 1
     # make sure cds_frac == 1 also gets bin
     bin_idx = np.clip(bin_idx, 0, bins - 1)
     tweet_prob = []
+    distorted_prob = []
     bin_centers = []
     for i in range(bins):
         if i not in bin_idx:
             tweet_prob.append(np.nan)
         else:
             frac_tweeted = np.mean(tweeted[bin_idx==i])
+            frac_distorted = np.mean(distorted[bin_idx==i])
             tweet_prob.append(frac_tweeted)
+            distorted_prob.append(frac_distorted)
         bin_centers.append(0.5 * (bin_edges[i] + bin_edges[i+1]))
 
     width = bin_edges[1] - bin_edges[0] 
@@ -190,6 +260,12 @@ def plot_tf_idf_PCA_runs(mean_traj, std_traj=None, num_steps=100, shift=5, save=
 
 
 def check_degree_distribution(unique_degrees, frequencies):
+    """
+    Plot the degree distribution on a log-log scale.
+    Args:
+        unique_degrees (list of int): Unique degrees in the network.
+        frequencies (list of int): Frequencies corresponding to each degree.
+    """
     plt.figure(figsize=(10, 6))
     plt.loglog(unique_degrees, frequencies, 'bo')
     plt.title('Degree Distribution (Log-Log Scale)')
@@ -197,4 +273,33 @@ def check_degree_distribution(unique_degrees, frequencies):
     plt.ylabel('Frequency')
     plt.show()
 
+def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, save_path=None):
+    """
+    Plot the mean tweet frequency over time with variance as a shaded region.
 
+    Args:
+        mean_freqs (list of float): Mean tweet frequency over time.
+        var_freqs (list of float): Variance of tweet frequency over time.
+        window_size (int): The size of the sliding window used for calculation.
+        save_path (str, optional): Path to save the plot.
+    """
+    rounds = range(len(mean_freqs))
+    std_devs = np.sqrt(var_freqs)
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(rounds, mean_freqs, label='Mean Frequency', color='blue')
+    plt.fill_between(rounds, 
+                     np.array(mean_freqs) - std_devs, 
+                     np.array(mean_freqs) + std_devs, 
+                     color='blue', alpha=0.2, label='Standard Deviation')
+    
+    plt.title(f'Tweet Frequency Over Time (Window Size: {window_size})')
+    plt.xlabel('Round')
+    plt.ylabel('Frequency')
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(alpha=0.3)
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+    plt.show()

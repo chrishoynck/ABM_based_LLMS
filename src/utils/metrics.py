@@ -294,3 +294,59 @@ def traj_variance_in_pca_space(runs_tf_idf_per_setting, pca):
         std_traj[setting] = stacked.std(axis=0)           # (T, D)
 
     return std_traj, var_traj
+
+def calculate_tweet_frequency_stats(agent_histories, window_size=5):
+    """
+    Calculate the mean and variance of tweet frequency over time using a sliding window.
+
+    Args:
+        agent_histories (list of list of str): List of tweet histories for each agent.
+        window_size (int): The size of the sliding window.
+
+    Returns:
+        dict: A dictionary containing 'mean' and 'variance' lists over time.
+    """
+    if len(agent_histories) == 0:
+        return {'mean': [], 'variance': []}
+
+    num_steps = len(agent_histories[0])
+    mean_freqs = []
+    var_freqs = []
+
+    for t in range(num_steps):
+        # Determine the window range
+        start = max(0, t - window_size + 1)
+        end = t + 1
+        
+        freqs_at_t = []
+        for history in agent_histories:
+            window = history[start:end]
+            if not window:
+                freqs_at_t.append(0.0)
+                continue
+            
+            tweets_count = sum(1 for tweet in window if tweet != "NO_TWEET")
+            freq = tweets_count / len(window)
+            freqs_at_t.append(freq)
+        
+        mean_freqs.append(np.mean(freqs_at_t))
+        var_freqs.append(np.var(freqs_at_t))
+
+    return {'mean': mean_freqs, 'variance': var_freqs}
+
+
+def obtain_tweet_histories(networks):
+    """
+    Obtain tweet histories from a list of networks.
+
+    Args:
+        networks (list): List of network objects.
+    Returns:
+        list of list of str: List of tweet histories for each agent across all networks.
+    """
+    all_histories = []
+    for network in networks:
+        for agent in network.all_agents:
+            history = getattr(agent, "tweethistory", [])
+            all_histories.append(history)
+    return all_histories

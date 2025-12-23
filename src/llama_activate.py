@@ -41,16 +41,6 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR, use_fas
 if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-# def get_llm():
-#     """Create a vLLM LLM engine instead of a HF pipeline."""
-#     llm = LLM(
-#         model=MODEL_ID,
-#         dtype=DTYPE_STR,
-#         trust_remote_code=True,
-#         download_dir=CACHE_DIR,
-#     )
-#     return llm
-
 def get_pipe():
     # Pipeline configuration
     pipe = pipeline(
@@ -273,7 +263,7 @@ def retrieve_existing_net(args):
     file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
     return file_path
 
-def generate_new_net(args, pipe, state= 'basis',  save_network=True):
+def generate_new_net(args, pipe, state= 'basis'):
     '''Wrapper to generate a new network and run the simulation.
     Args:
         args: Argument namespace containing network parameters.
@@ -356,7 +346,7 @@ if __name__ == "__main__":
         # generate new network
         networks, running_fracs, fracs_dist_step = generate_new_net(args, pipe, state=state)
 
-    network = networks[0]
+    network = networks[0][1]
 
     # plot TF-IDF PCA
     n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
@@ -369,10 +359,17 @@ if __name__ == "__main__":
         else:
             setting_network[state].append(network)
 
+    
+    vis.print_network_phq9(network)
+
+    # Frequency of tweeting
+    tweet_histories = metrics.obtain_tweet_histories([network])
+    mean_var_freqs = metrics.calculate_tweet_frequency_stats(tweet_histories)
+    vis.plot_tweet_frequency(mean_var_freqs['mean'], mean_var_freqs['variance'])
+
+    #PCA
     meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, num_steps=100, shift=5)
     mean_traj, pca = metrics.pca_on_means(meanvar_tf_idf_per_setting, n_components=2)
-    
-
     std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
     vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)

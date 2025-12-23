@@ -240,6 +240,7 @@ class Agent:
         S.T all updates happen simultaneously after all agents have decided.
         """       
         tweetje = self._next_last_tweet
+        distorted = False
         if  self._next_activation_state:
 
             # update distortion metrics
@@ -248,10 +249,12 @@ class Agent:
             self.distorted_tweets = self.distorted_tweets[-5:]
             self.active_tweethistory.append(tweetje)
             self.active_tweethistory = self.active_tweethistory[-5:]
+            distorted = True
 
         self.tweethistory.append(self._next_last_tweet)
         self.last_tweet = self._next_last_tweet
         self.activation_state = self._next_activation_state
+        return distorted
 
     def reset_activation_state(self):
         '''
