@@ -6,6 +6,7 @@ import inspect
 # from vllm import LLM, SamplingParams
 # from src.classes.agent import Agent
 import utils.metrics as metrics
+from utils.path_manager import PathManager
 from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
 import utils.load_personas as lp
 import utils.visualization as vis
@@ -284,7 +285,7 @@ if __name__ == "__main__":
 
     pipe = get_pipe()
     args = generate_parser()
-
+    path_manager = PathManager(args=args)
     if args.depressed:
         states = ["depressed"]
     elif args.enforce_ngrams:
