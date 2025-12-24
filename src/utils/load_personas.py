@@ -114,7 +114,7 @@ def parse_phq9_cov(row):
 
 def load_phq9(filepath="data/confidential/phq9.sav", personass_to_load=10, seed=42):
     df = pd.read_spss(filepath)
-    print(df.columns)
+    # print(df.columns)
     # print(df.columns[100:200])
     filtered = df.dropna(subset=['H1_PHQ9_sumscore', 'H1_PHQ9_deprsymp'])
     filtered.to_csv("data/confidential/phq9_filtered.csv", index=False)

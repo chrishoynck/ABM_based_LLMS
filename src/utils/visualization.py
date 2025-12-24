@@ -2,10 +2,9 @@ import os
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
-import reading_in as ri
 
 
-def print_network(network, path=""):
+def print_network(network, path="", filename="default.png", save=False):
     """
     Print network at one single iteration
 
@@ -33,12 +32,12 @@ def print_network(network, path=""):
         node_size=400,
         font_size=10,
     )
-
-    plt.savefig(f"{path}/network_snapshot.png", dpi=300)
+    if save:
+        plt.savefig(f"{path}/network_snapshot_{filename}.png", dpi=300)
     plt.show()
     return 
 
-def print_network_phq9(network, path=""):
+def print_network_phq9(network, path="", filename="default.png", save=False):
     """
     Print network at one single iteration
 
@@ -98,12 +97,13 @@ def print_network_phq9(network, path=""):
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, label='PHQ-9 Score')
     
-    plt.savefig(f"{path}/network_snapshot.png", dpi=300)
+    if save:
+        plt.savefig(f"{path}/network_snapshot_phq9_{filename}.png", dpi=300)
     plt.show()
     return 
 
 
-def distorted_info(cds_info, path=""):
+def distorted_info(cds_info, path="", filename="default.png", save=False):
     '''
     This function bins fractions of distorted neighbors, and plots the probability corresponding to that to tweet.
     Args:
@@ -143,11 +143,13 @@ def distorted_info(cds_info, path=""):
     plt.legend()
     plt.ylim(0, 1)
     plt.grid(alpha=0.3, axis="y")
-    plt.savefig(f"{path}/distorted_info.png", dpi=300)
+    if save:
+        plt.savefig(f"{path}/distorted_info_{filename}.png", dpi=300)
     plt.show()
 
 def plot_distorted_fracs(frac_distorted_this_step, 
-                         path=""):
+                         path="", filename="default.png",
+                         save=False):
     '''
     This function plots the fraction of distorted tweets per round.
     Args:
@@ -158,13 +160,14 @@ def plot_distorted_fracs(frac_distorted_this_step,
     plt.ylabel("Fraction of distorted tweets")
     plt.ylim(0, 1)
     plt.grid(alpha=0.3)
-
-    plt.savefig(f"{path}/distorted_step_fracs_3.png", dpi=300)
+    if save:    
+        plt.savefig(f"{path}/distorted_step_fracs_{filename}.png", dpi=300)
     plt.show()
 
 
 def plot_running_fracs(running_fracs, 
-                        path=""):
+                        path="", filename="default.png",
+                        save=False):
     '''
     This function plots the running mean fraction of distorted tweets over rounds.
     Args:
@@ -178,15 +181,16 @@ def plot_running_fracs(running_fracs,
 
     if not os.path.exists(path):
         os.makedirs(path)
-
-    plt.savefig(f"{path}/running_fracs_3.png", dpi=300)
+    if save:
+        plt.savefig(f"{path}/running_fracs_{filename}.png", dpi=300)
     plt.show()
 
 def plot_tf_idf_PCA(reduced_runs, 
                     states, 
                     num_steps=100, 
                     shift=5, 
-                    path=""):
+                    path="", filename="default.png",
+                    save=False):
     '''
     This function plots the PCA-reduced TF-IDF data.
     Args:
@@ -205,8 +209,8 @@ def plot_tf_idf_PCA(reduced_runs,
     plt.ylabel("PCA Component 2")
     plt.legend()
     plt.grid(alpha=0.3)
-
-    plt.savefig(f"{path}/tf_idf_pca_window{num_steps}_shift{shift}_{len(states)}{states[0]}.png", bbox_inches='tight', dpi=300)
+    if save:
+        plt.savefig(f"{path}/tf_idf_pca_window{num_steps}_shift{shift}_{filename}.png", bbox_inches='tight', dpi=300)
     plt.show()
 
 def plot_tf_idf_PCA_runs(mean_traj,
@@ -214,7 +218,8 @@ def plot_tf_idf_PCA_runs(mean_traj,
                         num_steps=100, 
                         shift=5, 
                         path="",
-                        ):
+                        filename="default.png",
+                        save=False):
     """
     Plot PCA-reduced TF-IDF trajectories.
 
@@ -242,22 +247,13 @@ def plot_tf_idf_PCA_runs(mean_traj,
         plt.scatter(traj[:, 0], traj[:, 1], s=s, alpha=0.7, label=setting)
         plt.plot(traj[:, 0], traj[:, 1], alpha=0.5)
 
-    enforced_ngrams = False
-    depressed = False
-
-    # MESSY
-    if len(mean_traj) <= 1:
-        if setting == "enforced_ngrams":
-            enforced_ngrams = True
-        if setting == "depressed":
-            depressed = True
-    
     plt.xlabel("PCA Component 1")
     plt.ylabel("PCA Component 2")
     plt.legend()
     plt.grid(alpha=0.3)
     plt.show()
-    plt.savefig(f"{path}/tf_idf_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings.png", bbox_inches='tight', dpi=300) 
+    if save:
+        plt.savefig(f"{path}/tf_idf_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings_{filename}.png", bbox_inches='tight', dpi=300) 
 
 
 def check_degree_distribution(unique_degrees, frequencies):
@@ -274,7 +270,7 @@ def check_degree_distribution(unique_degrees, frequencies):
     plt.ylabel('Frequency')
     plt.show()
 
-def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path=""):
+def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path="", filename="default.png", save=False ):
     """
     Plot the mean tweet frequency over time with variance as a shaded region.
 
@@ -301,6 +297,6 @@ def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path=""):
     plt.legend()
     plt.grid(alpha=0.3)
     
-
-    plt.savefig(f"{file_path}/tweet_freq_window{window_size}.png", dpi=300)
+    if save:
+        plt.savefig(f"{file_path}/tweet_freq_window{window_size}{filename}.png", dpi=300)
     plt.show()

@@ -66,3 +66,7 @@ class PathManager:
 
     def get_full_network_path(self):
         return self.get_run_directory(is_plot=False) / self.get_network_filename()
+    
+    def get_plot_name(self):
+        """Returns a standard filename for plots."""
+        return f"_num_agents{self.num_agents}_{self.rounds}_net_{self.seed}.png"

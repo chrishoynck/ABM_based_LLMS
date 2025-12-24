@@ -12,30 +12,35 @@ def read_in_network_properties(file_path):
     for line in lines[2:]:  # Skip the header lines
         key, value = line.strip().split(": ", 1)
 
-        if key in ("Number of Agents", "Number of Edges", "Seed", "Iterations", "Agent_w_Highest_Deg"):
+        if key in ("Number of Agents", "Number of Edges", "Seed", "Iterations", "Agent_w_Highest_Deg", "Degree", "Dimension", "Initial Edges (m)"):
             properties[key] = int(value)
 
-        elif key in ( "P value", "Update Fraction"):
+        elif key in ( "P value", "Update Fraction", "Alpha", "B"):
             properties[key] = float(value)
+        
+        elif key == "sdc":
+            properties[key] = bool(value) 
 
         # save distorted fracs as metric
         elif key in ("Distorted Frac" , "Dist Step Frac"):
             # value = value.replace("nan", "0")
             distorted_fracs = ast.literal_eval(value)
             properties[key] = [float(f) for f in distorted_fracs]
+
         elif key == "Connections":
             # Parse connections as a list of tuples (id1, id2)
             connections = ast.literal_eval(value)
             properties[key] = [(int(a), int(b)) for a, b in connections]
+
         elif key == "CDS Info":
             cds_info = ast.literal_eval(value)
             properties[key] = [(float(frac_neigh), bool(act_agent), bool(distorted)) for frac_neigh, act_agent, distorted in cds_info]
+
         elif key in ("Network RNG State", "Torch RNG State"):
             properties[key] = ast.literal_eval(value)
+
         elif key == "Agents":
             # Parse agents as a list of tuples
-            # (agent_id, identity, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
-            # agents = ast.literal_eval(value)
             value = value.replace("nan", "None")
             try:
                 agents = ast.literal_eval(value)
@@ -45,7 +50,6 @@ def read_in_network_properties(file_path):
                 raise
         
             parsed_agents = []
-            
             # ADD WELLBEING -> DONE
             for agent_id, wellbeing, persona, activation_state, tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh in agents:
                 parsed_agents.append(
@@ -122,44 +126,24 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, e
 
     # Add properties specific to RandomNetwork
     if isinstance(network, RandomNetwork):
-        network_type = "r"
         properties["P value"] = network.p
         properties["Degree (k)"] = network.k
 
     # Add properties specific to ScaleFreeNetwork
     elif isinstance(network, ScaleFreeNetwork):
-        network_type = "sf"
         properties["Initial Edges (m)"] = network.m
         properties["Total Degree"] = network.total_degree
     
     # Else social distance attachment
     elif isinstance(network, SocialDistanceAttachment):
-        network_type = "sdc" if network.sdc else "sda"
+        properties["sdc"] = network.sdc
         properties["Alpha"] = network.alpha
         properties["Degree"] = network.degree
         properties["Dimension"] = network.dim
+        properties["B"] = network.b
     else:
         print("Network should be either scale-free, random, or social distance attachment")
 
-    # enforced n-grams dominates depressed
-    if enforce_ngrams:
-        state = "enforced_ngrams"
-    elif depressed:
-        state = "depressed"
-    else:
-        state = "basis"
-
-    # # save for scale free net
-    # if network_type == "sf": 
-    #     if str(network.m) not in os.listdir(f"data/networks/{state}/sf"):
-    #         os.mkdir(f"data/networks/{state}/sf/{network.m}")
-    #     file_output_path = f"data/networks/{state}/sf/{network.m}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
-    
-    # # save for random net
-    # else:
-    #     if str(network.p).replace(".", "_") not in os.listdir(f"data/networks/{state}/rand"):
-    #         os.mkdir(f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}")
-    #     file_output_path = f"data/networks/{state}/rand/{str(network.p).replace('.', '_')}/num_agents{len(network.all_agents)}_{network.iterations}_net_{seed}.txt"
 
     path_manager = PathManager(network=network)
     file_output_path = path_manager.get_full_network_path()
@@ -191,9 +175,10 @@ def generate_network(args, pipe):
     file_path = pm.get_full_network_path()
     props = read_in_network_properties(file_path)
     
-    # metric
+    # metrics
     distorted_fracs = props["Distorted Frac"]
     dist_per_step = props["Dist Step Frac"]
+    
 
     # network props
     num_agents = props["Number of Agents"]
@@ -208,6 +193,7 @@ def generate_network(args, pipe):
             num_agents=num_agents,
             seed=seed,
             p=p,
+            form_connections=False
         )
     elif "Initial Edges (m)" in props:
         # ScaleFreeNetwork
@@ -216,9 +202,26 @@ def generate_network(args, pipe):
             num_agents=num_agents,
             m=m,
             seed=seed,
+            form_connections=False
         )
+
     else:
-        raise ValueError("Could not infer network type from properties file.")
+        # SocialDistanceAttachment
+        alpha = props["Alpha"]
+        degree = props["Degree"]
+        dim = props["Dimension"]
+        b = props["B"]
+        sdc = props.get("sdc", False)
+        network = SocialDistanceAttachment(
+            num_agents=num_agents,
+            alpha=alpha,
+            degree=degree,
+            dim=dim,
+            seed=seed,
+            sdc=sdc, 
+            form_connections=False
+        )
+        network.b = b  # set b if needed
 
     # Make sure we continue from the saved iteration count
     network.iterations = iterations
@@ -272,65 +275,4 @@ def generate_network(args, pipe):
     return network, distorted_fracs, dist_per_step
 
 
-# def retrieve_existing_net(args):
-#     '''Retrieve file path for existing network based on arguments.
-#     Args:
-#         args: Argument namespace containing network parameters.
-#     Returns:
-#         file_path (str): Path to the saved network file.
-#     '''
-#     if args.enforce_ngrams:
-#         state = "enforced_ngrams"
-#     elif args.depressed:
-#         state = "depressed"
-#     else:
-#         state = "basis"
-    
-#     if args.net == "sf":
-#         what_network = "sf"
-#         parameter = f'{args.m}'
-#     elif args.net == "sda":
-#         what_network = "sda"
-#         parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-#     elif args.net == "sdc":
-#         what_network = "sdc"
-#         parameter = f'{args.alpha}_d{args.degree}'.replace(".", "_")
-#     else:
-#         parameter = f'{str(args.p).replace(".", "_")}'
-#         what_network = "r"
-    
-#     file_path = f"data/networks/{state}/{what_network}/{parameter}/num_agents{args.num_agents}_{args.rounds}_net_{args.seed}.txt"
-#     return file_path
-
-# def plot_path_from_net(network, enforced_ngrams=None, depressed=None, type_nn='r'):
-#     path= plot_path(enforced_ngrams, depressed, type_nn, 
-#                     m=getattr(network, 'm', None), 
-#                     p=getattr(network, 'p', None), 
-#                     dim=getattr(network, 'dim', None), 
-#                     alpha=getattr(network, 'alpha', None), 
-#                     degree=getattr(network, 'degree', None))
-#     return path
-
-# def plot_path(enforced_ngrams, depressed, type_nn, m=None, p=None, dim=None, alpha=None, degree=None):
-#     if enforced_ngrams:
-#         setting = "enforced_ngrams"
-#     elif depressed:
-#         setting = "depressed"
-#     else:
-#         setting = "basis"
-
-#     if type_nn == 'sf':
-#         parameter = f'{m}'
-#     elif type_nn == 'r':
-#         parameter = f'{str(p).replace(".", "_")}'
-#     elif type_nn in ['sda', 'sdc']:
-#         parameter = f'{alpha}_d{degree}_dim{dim}'.replace(".", "_")
-#     else:
-#         raise ValueError("Unknown network type for plotting path.")
-
-#     path = f"plots/networks/{setting}/{type_nn}/{parameter}"
-#     if not os.path.exists(path):
-#         os.makedirs(path)
-    
-#     return path
     

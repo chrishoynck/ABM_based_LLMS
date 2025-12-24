@@ -16,7 +16,12 @@ class _Network:
     The network can be updated by responding to news intensities and adjusting the network accordingly.    
     """
 
-    def __init__(self, num_agents=200, directed=False, seed=None, well_being = None, personas = None, state="basis"):
+    def __init__(self, num_agents=200, 
+                 directed=False, 
+                 seed=None, 
+                 well_being = None, 
+                 personas = None, 
+                 state="basis"):
         """
         Initialize the network with a specified number of agents, mean, correlation, update fraction, and seed.
 
@@ -252,7 +257,12 @@ class RandomNetwork(_Network):
     It inherits from the _Network class and initializes the network by connecting all agents with a probability `p`.
     """
 
-    def __init__(self, p=0.1, k=0, depressed_personas=None, **kwargs):
+    def __init__(self, 
+                 p=0.1, 
+                 k=0, 
+                 depressed_personas=None,
+                 form_connections=True, 
+                 **kwargs):
         """
         Initialize the network by connecting all agents with a probability `p`.
         If `p` is very low, the network will resemble a regular network with fixed degree `k`.
@@ -265,8 +275,9 @@ class RandomNetwork(_Network):
         super().__init__(**kwargs)
         self.p = p
         self.k = k
-
-        self.initialize_network(depressed_personas=depressed_personas)
+        
+        if form_connections:
+            self.initialize_network(depressed_personas=depressed_personas)
 
     def initialize_network(self, depressed_personas=None):
         """
@@ -313,7 +324,7 @@ class ScaleFreeNetwork(_Network):
     This class represents a scale-free network of agents.
     It inherits from the _Network class and initializes the network by connecting agents in a scale-free manner.
     """
-    def __init__(self, m=2, plot=False, depressed_personas=None, **kwargs):
+    def __init__(self, m=2, plot=False, depressed_personas=None, form_connections=True, **kwargs):
         """
         Initialize the network by connecting agents in a scale-free manner.
         The network is initialized with `m` connections for each new agent.
@@ -329,7 +340,8 @@ class ScaleFreeNetwork(_Network):
         self.total_degree = 0
         self.cumulative_degree_list = []
 
-        self.initialize_network(depressed_personas=depressed_personas)
+        if form_connections:
+            self.initialize_network(depressed_personas=depressed_personas)
 
     def initialize_network(self, depressed_personas=None):
         """
@@ -499,7 +511,16 @@ class SocialDistanceAttachment(_Network):
     This class represents a social distance attachment network of agents.
     It inherits from the _Network class and initializes the network by connecting agents based on social distance.
     """
-    def __init__(self, alpha, dim, degree, power_law=False, plot=False, depressed_personas=None, dist_type= "gaussian_clusters", **kwargs):
+    def __init__(self, 
+                 alpha, 
+                 dim, 
+                 degree, 
+                 sdc=False, 
+                 plot=False, 
+                 depressed_personas=None, 
+                 dist_type= "gaussian_clusters", 
+                 form_connections=True, 
+                 **kwargs):
         """
         Initialize the network by connecting agents based on social distance.
         """
@@ -511,9 +532,10 @@ class SocialDistanceAttachment(_Network):
         self.b = 0.0
         self.agent_positions = None
         self.degree = degree
-        self.sdc = power_law
+        self.sdc = sdc
         
-        self.initialize_network(depressed_personas=depressed_personas, plot=plot)
+        if form_connections:
+            self.initialize_network(depressed_personas=depressed_personas, plot=plot)
 
     def initialize_network(self, depressed_personas=None, plot=False):
         """

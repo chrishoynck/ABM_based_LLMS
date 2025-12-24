@@ -83,10 +83,10 @@ def build_network(args, personas, well_being, depressed_personas=None):
             dim=args.dim,
             num_agents=args.num_agents,
             seed=args.seed,
-            plot= True,
+            plot=False,
             well_being= well_being,
             personas=personas,
-            power_law=(args.net == "sdc"),
+            sdc=(args.net == "sdc"),
             depressed_personas=depressed_personas,
         )
     else:
@@ -294,8 +294,8 @@ if __name__ == "__main__":
         states = ["basis"]
 
     #experiment
-    states = ["basis", "depressed", "enforced_ngrams"]
-    seedjes = [42, 53]
+    # states = ["basis", "depressed", "enforced_ngrams"]
+    seedjes = [42]
     
     if args.use_saved_network is not None:
         # load in existing network and update if specified
@@ -321,32 +321,29 @@ if __name__ == "__main__":
             setting_network[state] = [network]
         else:
             setting_network[state].append(network)
-
     
-    vis.print_network_phq9(network)
+    path = path_manager.get_run_directory(is_plot=True)
+    vis.print_network_phq9(network, path, save=args.save)
 
     # Frequency of tweeting
     tweet_histories = metrics.obtain_tweet_histories([network])
     mean_var_freqs = metrics.calculate_tweet_frequency_stats(tweet_histories)
-    vis.plot_tweet_frequency(mean_var_freqs['mean'], mean_var_freqs['variance'])
+    vis.plot_tweet_frequency(mean_var_freqs['mean'], mean_var_freqs['variance'], 5, path, save=args.save)
 
     #PCA
     meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, 
                                                                                num_steps=100, 
                                                                                shift=5, 
-                                                                               networks=networks[0][0], 
-                                                                               type_nn=args.net)
+                                                                               n_grams=n_grams)
     
     mean_traj, pca = metrics.pca_on_means(meanvar_tf_idf_per_setting, n_components=2)
     std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
-    vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
-    
+    vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save, path=path)
+    vis.plot_running_fracs(running_fracs, path, save=args.save)
+    vis.plot_distorted_fracs(fracs_dist_step, path, save=args.save)
 
-    # vis.plot_running_fracs(running_fracs, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
-    # vis.plot_distorted_fracs(fracs_dist_step, mmtje, pmtje, enforced_ngrams=args.enforce_ngrams, depressed=args.depressed, type_nn=args.net)
-    # vis.print_network(network)
-
+ 
     
 
 
