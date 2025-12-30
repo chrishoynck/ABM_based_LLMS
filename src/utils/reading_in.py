@@ -4,6 +4,13 @@ import ast, torch, os
 import numpy as np
 
 def read_in_network_properties(file_path):
+    """
+    Reads a network properties file and returns a dictionary of its properties.
+    Args:
+        file_path (str): Path to the saved properties file.
+    Returns:
+        dict: A dictionary containing the properties of the network.
+    """
     properties = {}
 
     with open(file_path, "r", encoding="utf-8") as file:
@@ -70,7 +77,7 @@ def read_in_network_properties(file_path):
             properties[key] = value
     return properties
 
-def read_out_network_properties(network, seed, dist_per_step, distorted_fracs, enforce_ngrams = False, depressed = False):
+def read_out_network_properties(network, seed, dist_per_step, distorted_fracs):
     """
     Extracts and returns the properties of a network for analysis or storage.
     Supports RandomNetwork and ScaleFreeNetwork.
@@ -240,9 +247,6 @@ def generate_network(args, pipe):
     id_to_agent = {agent.ID: agent for agent in network.all_agents}
 
     # Restore agents
-    # (agent_id, persona, activation_state,
-    #  tweethistory, active_tweethistory, distorted_tweethistory, frac_distorted_neigh)
-
     # ADD WELLBEING -> DONE
     for (agent_id, wellbeing, persona, activation_state,
          tweethistory, active_tweethistory,
