@@ -14,7 +14,8 @@ def print_network(network, path="", filename="default.png", save=False):
     print("starting to visualize network...")
     color_map = ['lightblue'] * len(network.all_agents)
     graph = nx.Graph()
-    graph.add_nodes_from(range(len(network.all_agents)))
+
+
     graph.clear_edges()
     for connection in network.connections:
         graph.add_edge(connection[0].ID, connection[1].ID)
@@ -46,25 +47,35 @@ def print_network_phq9(network, path="", filename="default.png", save=False):
     """
     # Create color map based on PHQ-9 scores
     node_colors = []
+    graph = nx.Graph()
+
     for agent in network.all_agents:
         if agent.well_being and "phq9_sumscore" in agent.well_being:
             score = agent.well_being["phq9_sumscore"]
-
+            
             # Normalize score (0-27) to 0-1 range for colormap
             normalized_score = min(max(score / 27.0, 0.0), 1.0)
             node_colors.append(normalized_score)
+            graph.add_node(agent.ID, mood=score) 
         else:
+            print(f"Agent {agent.ID} has no PHQ-9 score.")
             # Default color (e.g., light blue) if no score is available
             node_colors.append(0.0) # Map 0 to green/low score color
-    
-    graph = nx.Graph()
-    graph.add_nodes_from(range(len(network.all_agents)))
+            graph.add_node(agent.ID, mood=None)
+            
     graph.clear_edges()
     for connection in network.connections:
         graph.add_edge(connection[0].ID, connection[1].ID)
     
+    try: 
+        assortativity = nx.numeric_assortativity_coefficient(graph, 'mood')
+        print(f"PHQ-9 assortativity: {assortativity}")
+    except Exception as e:
+        print(f"Could not compute assortativity: {e}")
+
+    
     # Set positions and draw the graph
-    plt.figure(figsize=(8,8))
+    plt.figure(figsize=(6,6))
     pos = nx.kamada_kawai_layout(graph, scale=0.6)
     
     # Use a colormap from green (low score) to red (high score)
@@ -78,6 +89,7 @@ def print_network_phq9(network, path="", filename="default.png", save=False):
         font_size = max(2, 400 // len(network.all_agents))
         node_size = max(20, 40000 // len(network.all_agents))
         show_labels = False
+
     nx.draw(
         graph,
         pos,
@@ -100,7 +112,7 @@ def print_network_phq9(network, path="", filename="default.png", save=False):
     if save:
         plt.savefig(f"{path}/network_snapshot_phq9_{filename}.png", dpi=300)
     plt.show()
-    return 
+    return graph
 
 
 def distorted_info(cds_info, path="", filename="default.png", save=False):

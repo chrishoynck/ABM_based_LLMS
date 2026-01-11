@@ -74,8 +74,8 @@ def build_network(args, personas, well_being, depressed_personas=None):
             well_being= well_being,
             personas=personas,
             depressed_personas=depressed_personas,
-            
         )
+    
     elif args.net == "sda" or args.net == "sdc":
         return SocialDistanceAttachment(
             alpha=args.alpha,
@@ -235,7 +235,6 @@ def update_existing_network(pipe, args, state= 'basis'):
     return networks, running_fracs, fracs_dist_step
 
 
-
 def generate_new_net(args, pipe, state= 'basis'):
     '''Wrapper to generate a new network and run the simulation.
     Args:
@@ -298,6 +297,7 @@ if __name__ == "__main__":
     seedjes = [42]
     
     if args.use_saved_network is not None:
+        
         # load in existing network and update if specified
         networks, running_fracs, fracs_dist_step = retrieve_spcific_net(args, states, seedjes, pipe)
         if args.use_saved_network > 0:
@@ -315,6 +315,7 @@ if __name__ == "__main__":
     n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     # global_tf_idf, _, _ = metrics.retrieve_tf_idf(networks, num_steps=100, shift=5, n_grams=n_grams)
 
+    # wrapper dealing with multiple networks per setting
     setting_network = {}
     for state, network in networks:
         if state not in setting_network:
@@ -329,6 +330,7 @@ if __name__ == "__main__":
     tweet_histories = metrics.obtain_tweet_histories([network])
     mean_var_freqs = metrics.calculate_tweet_frequency_stats(tweet_histories)
     vis.plot_tweet_frequency(mean_var_freqs['mean'], mean_var_freqs['variance'], 5, path, save=args.save)
+    vis.distorted_info(network.cds_info, path, save=args.save)
 
     #PCA
     meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(setting_network, 
