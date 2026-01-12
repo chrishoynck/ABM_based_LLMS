@@ -35,7 +35,7 @@ def print_network(network, path="", filename="default.png", save=False):
     )
     if save:
         plt.savefig(f"{path}/network_snapshot_{filename}.png", dpi=300)
-    plt.show()
+    # plt.show()
     return 
 
 def print_network_phq9(network, path="", filename="default.png", save=False):
@@ -62,7 +62,7 @@ def print_network_phq9(network, path="", filename="default.png", save=False):
             # Default color (e.g., light blue) if no score is available
             node_colors.append(0.0) # Map 0 to green/low score color
             graph.add_node(agent.ID, mood=None)
-            
+
     graph.clear_edges()
     for connection in network.connections:
         graph.add_edge(connection[0].ID, connection[1].ID)
@@ -111,7 +111,7 @@ def print_network_phq9(network, path="", filename="default.png", save=False):
     
     if save:
         plt.savefig(f"{path}/network_snapshot_phq9_{filename}.png", dpi=300)
-    plt.show()
+    # plt.show()
     return graph
 
 
@@ -157,7 +157,7 @@ def distorted_info(cds_info, path="", filename="default.png", save=False):
     plt.grid(alpha=0.3, axis="y")
     if save:
         plt.savefig(f"{path}/distorted_info_{filename}.png", dpi=300)
-    plt.show()
+    # plt.show()
 
 def plot_distorted_fracs(frac_distorted_this_step, 
                          path="", filename="default.png",
@@ -174,7 +174,7 @@ def plot_distorted_fracs(frac_distorted_this_step,
     plt.grid(alpha=0.3)
     if save:    
         plt.savefig(f"{path}/distorted_step_fracs_{filename}.png", dpi=300)
-    plt.show()
+    # plt.show()
 
 
 def plot_running_fracs(running_fracs, 
@@ -195,13 +195,14 @@ def plot_running_fracs(running_fracs,
         os.makedirs(path)
     if save:
         plt.savefig(f"{path}/running_fracs_{filename}.png", dpi=300)
-    plt.show()
+    # plt.show()
 
 def plot_tf_idf_PCA(reduced_runs, 
                     states, 
                     num_steps=100, 
                     shift=5, 
-                    path="", filename="default.png",
+                    path="", 
+                    filename="default.png",
                     save=False):
     '''
     This function plots the PCA-reduced TF-IDF data.
@@ -223,7 +224,7 @@ def plot_tf_idf_PCA(reduced_runs,
     plt.grid(alpha=0.3)
     if save:
         plt.savefig(f"{path}/tf_idf_pca_window{num_steps}_shift{shift}_{filename}.png", bbox_inches='tight', dpi=300)
-    plt.show()
+    # plt.show()
 
 def plot_tf_idf_PCA_runs(mean_traj,
                         std_traj=None, 
@@ -263,7 +264,7 @@ def plot_tf_idf_PCA_runs(mean_traj,
     plt.ylabel("PCA Component 2")
     plt.legend()
     plt.grid(alpha=0.3)
-    plt.show()
+    # plt.show()
     if save:
         plt.savefig(f"{path}/tf_idf_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings_{filename}.png", bbox_inches='tight', dpi=300) 
 
@@ -280,7 +281,7 @@ def check_degree_distribution(unique_degrees, frequencies):
     plt.title('Degree Distribution (Log-Log Scale)')
     plt.xlabel('Degree')
     plt.ylabel('Frequency')
-    plt.show()
+    # plt.show()
 
 def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path="", filename="default.png", save=False ):
     """
@@ -310,5 +311,5 @@ def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path="", fil
     plt.grid(alpha=0.3)
     
     if save:
-        plt.savefig(f"{file_path}/tweet_freq_window{window_size}{filename}.png", dpi=300)
-    plt.show()
+        plt.savefig(f"{file_path}/tweet_freq_window{window_size}_{filename}.png", dpi=300)
+    # plt.show()

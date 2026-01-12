@@ -1,9 +1,53 @@
-import re, csv, json
-from collections import defaultdict
+import re, csv, json, os
 from sklearn.feature_extraction.text import TfidfVectorizer
-import math
 from sklearn.decomposition import PCA
 import numpy as np
+
+def print_histories(network, file_dir, file_name, save=False):
+    """
+    Parses and prints the tweet history for every agent in a readable format.
+    
+    Args:
+        network: The network object containing agents.
+        path (str): Directory path to save the output file.
+    """
+    output_lines = []
+    output_lines.append(f"{'='*25} AGENT TWEET HISTORIES {'='*25}")
+
+    for agent in network.all_agents:
+        # Extract meaningful tweets
+        valid_tweets = []
+        for round_idx, entry in enumerate(agent.tweethistory):
+            if "TWEET:" in entry:
+                # Split on the first occurrence of "TWEET:" to handle colons in the tweet text safely
+                clean_text = entry.split("TWEET:", 1)[1].strip()
+                valid_tweets.append((round_idx, clean_text))
+        
+        # Only add agents who actually tweeted
+        if valid_tweets:
+            header = f"\n🔹 Agent {agent.ID} (Tweeted {len(valid_tweets)} times)"
+            output_lines.append(header)
+            for r_idx, text in valid_tweets:
+                output_lines.append(f"   [Round {r_idx}]: \"{text}\"")
+        else:
+             output_lines.append(f"\n🔸 Agent {agent.ID} (Silent throughout simulation)")
+
+    output_lines.append(f"\n{'='*60}")
+    
+    # Join all lines into a single string
+    final_output = "\n".join(output_lines)
+    
+    # Print to console
+    print(final_output)
+
+    if save:
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+        filename = f"tweet_histories_{file_name}.txt"
+        export_file = os.path.join(file_dir, filename)
+        with open(export_file, "w", encoding="utf-8") as f:
+            f.write(final_output)
+        print(f"\n[Info] Tweet history saved to: {export_file}")
 
 def load_ngrams_tsv(filepath: str, skip_header=True) -> set:
     """

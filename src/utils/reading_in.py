@@ -80,7 +80,7 @@ def read_in_network_properties(file_path):
 def read_out_network_properties(network, seed, dist_per_step, distorted_fracs):
     """
     Extracts and returns the properties of a network for analysis or storage.
-    Supports RandomNetwork and ScaleFreeNetwork.
+    Supports RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment.
     Stores it in a dictionary, values can be accessed with the corresponding keys. 
     Useful for effectively extracting network properties. 
 
@@ -118,6 +118,7 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs):
         "Number of Agents": len(network.all_agents),
         "Number of Edges": len(network.connections),
         "Seed": seed,
+        "State": network.state,
         "Connections": connection_IDs,
         "Agents": agent_info, 
         "Iterations": network.iterations,
@@ -186,7 +187,6 @@ def generate_network(args, pipe):
     distorted_fracs = props["Distorted Frac"]
     dist_per_step = props["Dist Step Frac"]
     
-
     # network props
     num_agents = props["Number of Agents"]
     seed = props["Seed"]
@@ -232,6 +232,12 @@ def generate_network(args, pipe):
 
     # Make sure we continue from the saved iteration count
     network.iterations = iterations
+    if "State" in props:
+        network.state = props["State"]
+    else:
+        # Fallback if loading old files without State property
+        network.state = "basis"
+
     network.cds_info = props["CDS Info"]
     network.degree_distribution = {}
 
@@ -247,7 +253,6 @@ def generate_network(args, pipe):
     id_to_agent = {agent.ID: agent for agent in network.all_agents}
 
     # Restore agents
-    # ADD WELLBEING -> DONE
     for (agent_id, wellbeing, persona, activation_state,
          tweethistory, active_tweethistory,
          distorted_tweethistory, frac_distorted_neigh) in props["Agents"]:
