@@ -25,7 +25,7 @@ def read_in_network_properties(file_path):
         elif key in ( "P value", "Update Fraction", "Alpha", "B"):
             properties[key] = float(value)
         
-        elif key == "sdc":
+        elif key in ("sdc", "directed"):
             properties[key] = bool(value) 
 
         # save distorted fracs as metric
@@ -126,6 +126,7 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs):
         "Dist Step Frac": [float(x) for x in dist_per_step],
         "CDS Info": network.cds_info,
         "Agent_w_Highest_Deg": network.agent_w_highest_deg.ID,
+        "directed": network.directed
     }
 
     # randomness:
@@ -191,6 +192,7 @@ def generate_network(args, pipe):
     num_agents = props["Number of Agents"]
     seed = props["Seed"]
     iterations = props["Iterations"]
+    directed = props.get("directed", False)
 
     # Create right network type
     if "P value" in props:
@@ -232,6 +234,8 @@ def generate_network(args, pipe):
 
     # Make sure we continue from the saved iteration count
     network.iterations = iterations
+    network.directed = directed
+    
     if "State" in props:
         network.state = props["State"]
     else:

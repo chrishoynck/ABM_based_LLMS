@@ -78,6 +78,7 @@ def build_network(args, personas, well_being, depressed_personas=None):
             well_being= well_being,
             personas=personas,
             depressed_personas=depressed_personas,
+            directed=args.directed,
         )
     
     elif args.net == "sda" or args.net == "sdc":
@@ -92,6 +93,7 @@ def build_network(args, personas, well_being, depressed_personas=None):
             personas=personas,
             sdc=(args.net == "sdc"),
             depressed_personas=depressed_personas,
+            directed=args.directed,
         )
     else:
         return RandomNetwork(
@@ -102,6 +104,7 @@ def build_network(args, personas, well_being, depressed_personas=None):
             personas=personas,
             well_being= well_being,
             depressed_personas=depressed_personas,
+            directed=args.directed,
         )
 
 def generate_parser():
@@ -114,6 +117,7 @@ def generate_parser():
     parser.add_argument("--num_agents", type=int, default=10, help="Total number of agents")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--seeds", nargs="+", type=int, default=[42], help="List of seeds to run (e.g., --seeds 42 43 44)")
+    parser.add_argument("--directed", action="store_true", help="Whether the network is directed")
 
     # Scale-free specific
     parser.add_argument("--m", type=int, default=2, help="Edges per new node (scale-free)")
@@ -294,7 +298,6 @@ def pca_visualize(all_networks_results, path, filename, args):
     n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     path = path_manager.get_run_directory(is_plot=True)
     # wrapper dealing with multiple networks per setting
-
     
     meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(all_networks_results, 
                                                                                num_steps=100, 
@@ -306,22 +309,9 @@ def pca_visualize(all_networks_results, path, filename, args):
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
     vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save, path=path, filename=filename)
 
-if __name__ == "__main__":
+def main(args, pipe, states):
 
-    pipe = get_pipe()
-    args = generate_parser()
-
-    if args.depressed:
-        states = ["depressed"]
-    elif args.enforce_ngrams:
-        states = ["enforced_ngrams"]
-    else:
-        states = ["basis"]
-
-    #experiment
-    # states = ["basis", "depressed", "enforced_ngrams"]
     all_networks_results = {}
-    
     for seed in args.seeds:
         args.seed = seed
         set_seed(seed)
@@ -347,10 +337,30 @@ if __name__ == "__main__":
             
             # Collect result
             all_networks_results.setdefault(state, []).append(network)
+    return all_networks_results, running_fracs, fracs_dist_step
+
+if __name__ == "__main__":
+
+    pipe = get_pipe()
+    args = generate_parser()
+
+    if args.depressed:
+        states = ["depressed"]
+    elif args.enforce_ngrams:
+        states = ["enforced_ngrams"]
+    else:
+        states = ["basis"]
+
+    #experiment
+    # states = ["basis", "depressed", "enforced_ngrams"]
+    
+    # call main simulation
+    all_networks_results, running_fracs, fracs_dist_step = main(args, pipe, states)
 
     # analyze one of the networks
     network = all_networks_results[states[0]][0]
     path_manager = PathManager(network=network)
+
 
     # Get paths
     data_path = path_manager.get_run_directory(is_plot=False)

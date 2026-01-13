@@ -684,7 +684,7 @@ class SocialDistanceAttachment(_Network):
 
 
         if self.directed:
-            return A
+            return P, A
         
         # generate adjacency matrix (enforce symmetry (undirected))
         A = np.triu(A, 1)

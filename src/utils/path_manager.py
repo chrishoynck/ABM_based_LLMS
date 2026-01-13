@@ -16,6 +16,7 @@ class PathManager:
             self.state = self._get_state(args.enforce_ngrams, args.depressed)
             self.num_agents = args.num_agents
             self.seed = args.seed
+            self.directed = "directed" if args.directed else "undirected"
             self.rounds = args.rounds
         elif network:
             self.net_type = self._infer_net_type(network)
@@ -24,7 +25,7 @@ class PathManager:
             self.num_agents = len(network.all_agents)
             self.seed = network.seed # Assuming seed is stored
             self.rounds = network.iterations # Or initial rounds
-
+            self.directed = "directed" if (hasattr(network, 'directed') and network.directed) else "undirected"
     def _get_state(self, enforce_ngrams, depressed):
         if enforce_ngrams: return "enforced_ngrams"
         if depressed: return "depressed"
@@ -56,7 +57,7 @@ class PathManager:
     def get_run_directory(self, is_plot=False):
         """Returns the folder path: data/networks/{state}/{type}/{params}/"""
         base = self.base_plots if is_plot else self.base_data
-        path = base / self.state / self.net_type / self.params
+        path = base / self.state / self.net_type /self.directed/ self.params
         path.mkdir(parents=True, exist_ok=True) # Automatically create folders
         return path
 

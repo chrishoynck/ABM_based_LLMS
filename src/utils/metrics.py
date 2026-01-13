@@ -43,7 +43,7 @@ def print_histories(network, file_dir, file_name, save=False):
     if save:
         if not os.path.exists(file_dir):
             os.makedirs(file_dir)
-        filename = f"tweet_histories_{file_name}.txt"
+        filename = f"tweet_histories_{file_name}"
         export_file = os.path.join(file_dir, filename)
         with open(export_file, "w", encoding="utf-8") as f:
             f.write(final_output)
