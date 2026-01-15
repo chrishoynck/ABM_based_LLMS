@@ -207,12 +207,13 @@ def plot_running_fracs(running_fracs,
     plt.close()
     # plt.show()
 
-def plot_tf_idf_PCA(reduced_runs, 
+def plot_embedding_PCA(reduced_runs, 
                     states, 
                     num_steps=100, 
                     shift=5, 
                     path="", 
                     filename="default.png",
+                    sbert= False,
                     save=False):
     '''
     This function plots the PCA-reduced TF-IDF data.
@@ -223,7 +224,12 @@ def plot_tf_idf_PCA(reduced_runs,
         shift (int): Shift used in TF-IDF retrieval.
     '''
     plt.figure(figsize=(3, 3))
-    plt.title(f'TF-IDF PCA \n (window size={num_steps}, shift={shift})')
+
+    if sbert:
+        embedding = "SBERT"
+    else:
+        embedding = "TF-IDF"
+    plt.title(f'{embedding} PCA \n (window size={num_steps}, shift={shift})')
     for i, reduced in enumerate(reduced_runs):
         print("shape reduced:", reduced.shape)
         plt.scatter(reduced[:, 0], reduced[:, 1], alpha=0.7, s=10, label=states[i])
@@ -233,30 +239,38 @@ def plot_tf_idf_PCA(reduced_runs,
     plt.legend()
     plt.grid(alpha=0.3)
     if save:
-        plt.savefig(f"{path}/tf_idf_pca_window{num_steps}_shift{shift}_{filename}.png", bbox_inches='tight', dpi=300)
+        plt.savefig(f"{path}/{embedding.lower()}_pca_window{num_steps}_shift{shift}_{filename}.png", bbox_inches='tight', dpi=300)
     # plt.show()
     plt.close()
 
 
-def plot_tf_idf_PCA_runs(mean_traj,
+def plot_embedding_PCA_runs(mean_traj,
                         std_traj=None, 
                         num_steps=100, 
                         shift=5, 
                         path="",
                         filename="default.png",
+                        sbert= False,
                         save=False):
     """
     Plot PCA-reduced TF-IDF trajectories.
 
     Args:
-        mean_traj: dict[setting] -> array (T, 2)
-        std_traj:  dict[setting] -> array (T, 2), optional
-        num_steps: TF-IDF window size
-        shift:     TF-IDF shift
-        save:      whether to save the figure
+        mean_traj (dict[setting]): mean embedding trajectory (T, 2)
+        std_traj (dict[setting], optional): standard deviation of embedding trajectory (T, 2)
+        num_steps (int): window size
+        shift (int): shift of window
+        sbert (bool): whether SBERT embeddings were used
+        path (str): path to save the figure
+        filename (str): filename to save the figure
+        save (bool): whether to save the figure
     """
     plt.figure(figsize=(3, 3))
-    plt.title(f"TF-IDF PCA\n(window={num_steps}, shift={shift})")
+    if sbert:
+        embedding = "SBERT"
+    else:
+        embedding = "TF-IDF"
+    plt.title(f"{embedding} PCA\n(window={num_steps}, shift={shift})")
 
     for setting, traj in mean_traj.items():
         traj = np.asarray(traj)  # (T, 2)
@@ -278,7 +292,7 @@ def plot_tf_idf_PCA_runs(mean_traj,
     plt.grid(alpha=0.3)
     # plt.show()
     if save:
-        plt.savefig(f"{path}/tf_idf_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings_{filename}.png", bbox_inches='tight', dpi=300) 
+        plt.savefig(f"{path}/{embedding.lower()}_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings_{filename}.png", bbox_inches='tight', dpi=300) 
     plt.close()
 
 def check_degree_distribution(unique_degrees, frequencies):
