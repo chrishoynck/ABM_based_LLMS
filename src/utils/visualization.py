@@ -291,6 +291,8 @@ def plot_embedding_PCA_runs(mean_traj,
     plt.legend()
     plt.grid(alpha=0.3)
     # plt.show()
+
+    print(f"Saving PCA plot to folder {path} with filename {filename}")
     if save:
         plt.savefig(f"{path}/{embedding.lower()}_pca_runs{num_steps}_shift{shift}_{len(mean_traj)}settings_{filename}.png", bbox_inches='tight', dpi=300) 
     plt.close()

@@ -264,7 +264,7 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
                 window_centroid = np.zeros(embedding_dim)
             else:
                 # Embed all tweets in this window individually
-                embeddings = model.encode(tweets_in_window, batch_size=64, show_progress_bar=False)
+                embeddings = model.encode(tweets_in_window, batch_size=64, show_progress_bar=True)
                 
                 # Calculate the Mean Vector (Centroid) for this window
                 window_centroid = np.mean(embeddings, axis=0)
@@ -277,7 +277,7 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
     return global_sbert_matrices
 
 
-def sbert_for_runs(networks_per_setting: dict, model, num_steps=30, shift=5):
+def sbert_for_runs(networks_per_setting: dict, num_steps=30, shift=5):
     """
     Computes SBERT embeddings using Mean Pooling over time windows.
     
@@ -295,6 +295,7 @@ def sbert_for_runs(networks_per_setting: dict, model, num_steps=30, shift=5):
     all_networks, setting_slices = network_list_w_slices(networks_per_setting)
 
     # Compute SBERT embeddings for all networks
+    model = generate_sbert_model()
     global_sbert_matrices = mean_sbert_per_networks(model, all_networks, num_steps=num_steps, shift=shift)
 
     # Group by setting and compute mean trajectories
@@ -423,16 +424,8 @@ def tf_idf_for_runs(networks_per_setting: dict, num_steps=30, shift=5, n_grams=N
         vocab (np.array): Vocabulary array.
         vectorizer: Fitted TfidfVectorizer object.
     '''
-    all_networks = []
-    setting_slices = {}
-    start_index = 0
-    for setting, networks in networks_per_setting.items():
-        all_networks.extend(networks)
-        end_index = start_index + len(networks)
-
-        # record slice for this setting
-        setting_slices[setting] = (start_index, end_index)
-        start_index = end_index
+    # flatten networks and get slices
+    all_networks, setting_slices = network_list_w_slices(networks_per_setting)
 
     tf_idf_matrices, vocab, vectorizer = retrieve_tf_idf(
         all_networks, num_steps=num_steps, shift=shift, n_grams=n_grams)

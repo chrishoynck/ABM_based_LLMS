@@ -26,7 +26,7 @@ def read_in_network_properties(file_path):
             properties[key] = float(value)
         
         elif key in ("sdc", "directed"):
-            properties[key] = bool(value) 
+            properties[key] = (value == "True")
 
         # save distorted fracs as metric
         elif key in ("Distorted Frac" , "Dist Step Frac"):
@@ -235,7 +235,7 @@ def generate_network(args, pipe):
     # Make sure we continue from the saved iteration count
     network.iterations = iterations
     network.directed = directed
-    
+
     if "State" in props:
         network.state = props["State"]
     else:
@@ -250,8 +250,12 @@ def generate_network(args, pipe):
     network.rng.bit_generator.state = props["Network RNG State"]
 
     network._torch_gen = torch.Generator(device=pipe.model.device).manual_seed(seed)
-    state_tensor = torch.ByteTensor(props["Torch RNG State"])
-    network._torch_gen.set_state(state_tensor)
+    try:
+        state_tensor = torch.ByteTensor(props["Torch RNG State"])
+        network._torch_gen.set_state(state_tensor)
+    except Exception as e:
+        print("Error setting Torch RNG State:", e)
+        
 
     # create a map to map index ot id, (currently index is same as id)
     id_to_agent = {agent.ID: agent for agent in network.all_agents}

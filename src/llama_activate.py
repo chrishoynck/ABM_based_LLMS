@@ -298,16 +298,26 @@ def pca_visualize(all_networks_results, path, filename, args):
     n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     path = path_manager.get_run_directory(is_plot=True)
     # wrapper dealing with multiple networks per setting
-    
-    meanvar_tf_idf_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(all_networks_results, 
-                                                                               num_steps=100, 
-                                                                               shift=5, 
+
+    sbert = True
+    shift = 10
+    num_steps = 100
+    n_components = 2
+
+    if sbert:
+        meanvar_embedding_per_setting, all_mats_per_setting = metrics.sbert_for_runs(all_networks_results, 
+                                                      num_steps=num_steps, 
+                                                      shift=shift)
+    else:
+        meanvar_embedding_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(all_networks_results, 
+                                                                               num_steps=num_steps, 
+                                                                               shift=shift, 
                                                                                n_grams=n_grams)
     
-    mean_traj, pca = metrics.pca_on_means(meanvar_tf_idf_per_setting, n_components=2)
+    mean_traj, pca = metrics.pca_on_means(meanvar_embedding_per_setting, n_components=n_components)
     std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
-    vis.plot_tf_idf_PCA_runs(mean_traj, std_traj, num_steps=100, shift=5, save= args.save, path=path, filename=filename)
+    vis.plot_embedding_PCA_runs(mean_traj, std_traj, num_steps=num_steps, shift=shift, sbert=sbert,  save= args.save, path=path, filename=filename)
 
 def main(args, pipe, states):
 
@@ -336,17 +346,25 @@ def main(args, pipe, states):
                 network, running_fracs, fracs_dist_step = generate_new_net(args, pipe)
             
             # Collect result
-            all_networks_results.setdefault(state, []).append(network)
-    return all_networks_results, running_fracs, fracs_dist_step
+            all_networks_results.setdefault(state, []).append({
+            "network": network,
+            "running_fracs": running_fracs,
+            "fracs_dist_step": fracs_dist_step
+            })
+    return all_networks_results
 
 if __name__ == "__main__":
 
+    # Setup LLM pipeline
     pipe = get_pipe()
+
+    # Parse arguments
     args = generate_parser()
 
+    # detemrine experimental states
     if args.depressed:
         states = ["depressed"]
-    elif args.enforce_ngrams:
+    elif args.enforced_ngrams:
         states = ["enforced_ngrams"]
     else:
         states = ["basis"]
@@ -355,27 +373,36 @@ if __name__ == "__main__":
     # states = ["basis", "depressed", "enforced_ngrams"]
     
     # call main simulation
-    all_networks_results, running_fracs, fracs_dist_step = main(args, pipe, states)
+    all_networks_results = main(args, pipe, states)
 
-    # analyze one of the networks
-    network = all_networks_results[states[0]][0]
-    path_manager = PathManager(network=network)
+    for i in range(len(args.seeds)):
+        network_data = all_networks_results[states[0]][i]
+        # analyze one of the networks
+        network = network_data["network"]
+        running_fracs = network_data["running_fracs"]
+        fracs_dist_step = network_data["fracs_dist_step"]
 
 
-    # Get paths
-    data_path = path_manager.get_run_directory(is_plot=False)
-    plot_path = path_manager.get_run_directory(is_plot=True)
-    data_filename = path_manager.get_network_filename()
-    plot_filename = path_manager.get_plot_name()
+        # generate path manager (for saving data and plots)
+        path_manager = PathManager(network=network)
 
-    # Clean tweet histories
-    metrics.print_histories(network, file_dir = data_path, file_name = data_filename, save=args.save)
+        # Get paths
+        data_path = path_manager.get_run_directory(is_plot=False)
+        plot_path = path_manager.get_run_directory(is_plot=True)
+        data_filename = path_manager.get_network_filename()
+        plot_filename = path_manager.get_plot_name()
 
-    # Visualizations
-    call_visualizations(network, plot_path, plot_filename, args, running_fracs, fracs_dist_step)
+        # Clean tweet histories
+        metrics.print_histories(network, file_dir = data_path, file_name = data_filename, save=args.save)
 
-    #PCA
-    # pca_visualize(all_networks_results, plot_path, plot_filename, args)
+        # Visualizations
+        call_visualizations(network, plot_path, plot_filename, args, running_fracs, fracs_dist_step)
+
+        #PCA
+        all_networks_results1= {}
+        all_networks_results1["basis"] = all_networks_results.get("basis", [])[:2]
+        all_networks_results1["depressed"] = all_networks_results.get("basis", [])[2:]
+        pca_visualize(all_networks_results1, plot_path, plot_filename, args)
 
  
     

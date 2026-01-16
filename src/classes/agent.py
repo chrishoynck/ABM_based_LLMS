@@ -113,8 +113,6 @@ class Agent:
         )
 
 
-
-    
     def build_tweet_prompt(self, tokenizer, round_idx, neighbor_pairs, max_chars=240, force_active=False):
         # neighbor_pairs: list of (neighbor_id, last_text)
         # own history block
