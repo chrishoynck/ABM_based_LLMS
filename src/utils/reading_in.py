@@ -1,4 +1,4 @@
-from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
+from classes.network import SocialDistanceAttachment
 from utils.path_manager import PathManager
 import ast, torch, os
 import numpy as np
@@ -133,18 +133,18 @@ def read_out_network_properties(network, seed, dist_per_step, distorted_fracs):
     properties["Torch RNG State"] = network._torch_gen.get_state().tolist()
     properties["Network RNG State"] = network.rng.bit_generator.state
 
-    # Add properties specific to RandomNetwork
-    if isinstance(network, RandomNetwork):
-        properties["P value"] = network.p
-        properties["Degree (k)"] = network.k
+    # # Add properties specific to RandomNetwork
+    # if isinstance(network, RandomNetwork):
+    #     properties["P value"] = network.p
+    #     properties["Degree (k)"] = network.k
 
-    # Add properties specific to ScaleFreeNetwork
-    elif isinstance(network, ScaleFreeNetwork):
-        properties["Initial Edges (m)"] = network.m
-        properties["Total Degree"] = network.total_degree
+    # # Add properties specific to ScaleFreeNetwork
+    # elif isinstance(network, ScaleFreeNetwork):
+    #     properties["Initial Edges (m)"] = network.m
+    #     properties["Total Degree"] = network.total_degree
     
     # Else social distance attachment
-    elif isinstance(network, SocialDistanceAttachment):
+    if isinstance(network, SocialDistanceAttachment):
         properties["sdc"] = network.sdc
         properties["Alpha"] = network.alpha
         properties["Degree"] = network.degree
@@ -195,26 +195,25 @@ def generate_network(args, pipe):
     directed = props.get("directed", False)
 
     # Create right network type
-    if "P value" in props:
-        # RandomNetwork
-        p = props["P value"]
-        network = RandomNetwork(
-            num_agents=num_agents,
-            seed=seed,
-            p=p,
-            form_connections=False
-        )
-    elif "Initial Edges (m)" in props:
-        # ScaleFreeNetwork
-        m = int(props["Initial Edges (m)"])
-        network = ScaleFreeNetwork(
-            num_agents=num_agents,
-            m=m,
-            seed=seed,
-            form_connections=False
-        )
-
-    else:
+    # if "P value" in props:
+    #     # RandomNetwork
+    #     p = props["P value"]
+    #     network = RandomNetwork(
+    #         num_agents=num_agents,
+    #         seed=seed,
+    #         p=p,
+    #         form_connections=False
+    #     )
+    # elif "Initial Edges (m)" in props:
+    #     # ScaleFreeNetwork
+    #     m = int(props["Initial Edges (m)"])
+    #     network = ScaleFreeNetwork(
+    #         num_agents=num_agents,
+    #         m=m,
+    #         seed=seed,
+    #         form_connections=False
+    #     )
+    if True:
         # SocialDistanceAttachment
         alpha = props["Alpha"]
         degree = props["Degree"]

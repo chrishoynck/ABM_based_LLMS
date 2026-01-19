@@ -7,7 +7,7 @@ import inspect
 # from src.classes.agent import Agent
 import utils.metrics as metrics
 from utils.path_manager import PathManager
-from classes.network import RandomNetwork, ScaleFreeNetwork, SocialDistanceAttachment
+from classes.network import SocialDistanceAttachment
 import utils.load_personas as lp
 import utils.visualization as vis
 import utils.reading_in as ri
@@ -69,19 +69,8 @@ def build_network(args, personas, well_being, depressed_personas=None):
         depressed_personas: List of depressed personas for agents.
     Returns:
         network: Generated network object.
-    '''
-    if args.net == "sf":
-        return ScaleFreeNetwork(
-            m=args.m,
-            num_agents=args.num_agents,
-            seed=args.seed,
-            well_being= well_being,
-            personas=personas,
-            depressed_personas=depressed_personas,
-            directed=args.directed,
-        )
-    
-    elif args.net == "sda" or args.net == "sdc":
+    '''   
+    if args.net == "sda" or args.net == "sdc":
         return SocialDistanceAttachment(
             alpha=args.alpha,
             degree=args.degree,
@@ -96,16 +85,17 @@ def build_network(args, personas, well_being, depressed_personas=None):
             directed=args.directed,
         )
     else:
-        return RandomNetwork(
-            p=args.p,
-            k=args.k,
-            num_agents=args.num_agents,
-            seed=args.seed,
-            personas=personas,
-            well_being= well_being,
-            depressed_personas=depressed_personas,
-            directed=args.directed,
-        )
+        print("Only Social Distance Attachment network is currently implemented.")
+        # return RandomNetwork(
+        #     p=args.p,
+        #     k=args.k,
+        #     num_agents=args.num_agents,
+        #     seed=args.seed,
+        #     personas=personas,
+        #     well_being= well_being,
+        #     depressed_personas=depressed_personas,
+        #     directed=args.directed,
+        # )
 
 def generate_parser():
     "parse all given arguments"
@@ -162,7 +152,7 @@ def update_network(network, pipe, fracs_dist_step = [], running_fracs = [], roun
     n_grams = metrics.load_ngrams_tsv("data/distorted_language_ngrams.tsv")
     
     for _ in range(rounds):
-        mean_running_frac, frac_distorted_this_step = network.update_round(tokenizer, pipe, n_grams=n_grams, distorted_tweets=distorted_tweets)
+        mean_running_frac, frac_distorted_this_step = network.update_round(tokenizer, pipe, n_grams=n_grams, distorted_tweets=distorted_tweets, check_point=1)
         print(f"Round {network.iterations}: Mean running fraction of distorted agents: {mean_running_frac:.4f}, Fraction distorted this step: {frac_distorted_this_step:.4f} ")
         running_fracs.append(mean_running_frac)
         fracs_dist_step.append(frac_distorted_this_step)
@@ -328,7 +318,7 @@ def main(args, pipe, states):
 
         # loop over all states
         for state in states:
-            args.enforce_ngrams = (state == "enforced_ngrams")
+            args.enforce_ngrams = (state == "enforce_ngrams")
             args.depressed = (state == "depressed")
 
             # load in existing network if specified
@@ -364,13 +354,13 @@ if __name__ == "__main__":
     # detemrine experimental states
     if args.depressed:
         states = ["depressed"]
-    elif args.enforced_ngrams:
-        states = ["enforced_ngrams"]
+    elif args.enforce_ngrams:
+        states = ["enforce_ngrams"]
     else:
         states = ["basis"]
 
     #experiment
-    # states = ["basis", "depressed", "enforced_ngrams"]
+    # states = ["basis", "depressed", "enforce_ngrams"]
     
     # call main simulation
     all_networks_results = main(args, pipe, states)

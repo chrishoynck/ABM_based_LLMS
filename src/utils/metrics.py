@@ -230,9 +230,10 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
 
 
     # Here, we embed tweets in windows and mean-pool them, for every network. 
-    for i, net in enumerate(all_networks):
+    for i, network in enumerate(all_networks):
 
         # Calculate number of windows based on total iterations
+        net = network["network"]
         max_iters = net.iterations
         num_windows = max(1, (max_iters - num_steps) // shift + 1)
         
