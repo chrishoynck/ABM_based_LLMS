@@ -37,7 +37,7 @@ class Agent:
         self._force_active = False
         self.tweethistory = []
         
-
+        self._force_active = False
         self.last_tweet: str | None = None
         self._next_activation_state = False 
 
@@ -131,14 +131,14 @@ class Agent:
         score = well_being.get("phq9_sumscore")
         severity = Agent.phq9_severity_category(score)
 
-        dep_symp = well_being.get("depressive_symptoms")
-        diagnosis = well_being.get("diagnosis")
+        # dep_symp = well_being.get("depressive_symptoms")
+        # diagnosis = well_being.get("diagnosis")
         # freq_eps = well_being.get("Freq_depressive_episodes")
         # age_first = well_being.get("Age_first_depressive_episode")
 
         # Short flags
-        dep_flag = "screens positive" if dep_symp else "does not screen positive"
-        diag_flag = "has a history of MDD" if diagnosis else "has no recorded MDD diagnosis"
+        # dep_flag = "screens positive" if dep_symp else "does not screen positive"
+        # diag_flag = "has a history of MDD" if diagnosis else "has no recorded MDD diagnosis"
 
         extra_bits = []
         # if freq_eps is not None:
@@ -150,8 +150,9 @@ class Agent:
 
         return (
             f"Current well-being: PHQ-9 score {score} "
-            f"({severity} depression). The person {dep_flag} for clinically depression"
-            f"relevant depressive symptoms and {diag_flag}.{extra_txt}"
+            f"({severity} depression). " 
+            # The person {dep_flag} for clinically depression"
+            # f"relevant depressive symptoms and {diag_flag}.{extra_txt}"
         )
     
     def phq9_questionnaire_prompt(self, tokenizer, tweets: list[str]):
@@ -231,6 +232,7 @@ class Agent:
 
         # agents are asked to tweet
         if force_active:
+            self._force_active = True
             system = (f"You are a social media user {self.ID}.\n"
                        "Think of an interesting short tweet to post.\n"
                        "You must post a short tweet (<= " f"{max_chars} chars).\n"
@@ -243,12 +245,11 @@ class Agent:
             user = (
                 f"Identity: {self.persona_prompt(self.persona)}\n"
                 f"Well-being: {self.well_being_prompt(self.well_being)}\n"
-                f"Round: {round_idx}\n"
-                f"Your previous tweets:\n{own_block}\n"
             )
             
         # The agents may decide not to tweet
         else:
+            self._force_active = False
             system = (f"You are a social media user {self.ID}.\n"
             "You are given a short list of neighbor tweets (in case they have tweeted).\n"
             "Read the neighbor tweets and think of an interesting short tweet to post.\n"
@@ -260,7 +261,6 @@ class Agent:
             
             user = (
                 f"Identity: {self.persona_prompt(self.persona)}\n"
-                f"Round: {round_idx}\n"
                 f"Neighbor tweets:\n{neighbor_block}\n"
                 f"Your previous tweets:\n{own_block}\n"
             )
@@ -299,9 +299,6 @@ class Agent:
             self.frac_distorted_neigh = 0
         # neighbor_msgs = self.rng.permutation(neighbor_msgs)[:5]  # limit to first 5 neighbors
 
-        # force tweet if needed
-        self._force_active = force_active
-
         # create prompt
         prompt = self.build_tweet_prompt(
             tokenizer, round_idx, neighbor_msgs, max_chars=max_chars, force_active=force_active
@@ -317,7 +314,7 @@ class Agent:
             raw_tweet (str): The raw tweet output from the LLM.
         '''
         if self._force_active:
-            print (f"Agent {self.ID} FORCED TWEET OUTPUT: {raw_tweet}")
+            print (f"Agent {self.ID} TWEET: {raw_tweet}")
 
         do_tweet, tweet = self.parse_tweet_decision(raw_tweet)
         if do_tweet:

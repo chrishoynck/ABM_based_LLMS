@@ -1,5 +1,7 @@
 
-from transformers import AutoTokenizer, BitsAndBytesConfig, set_seed, pipeline
+from ctypes.util import test
+from transformers import AutoTokenizer, set_seed 
+from transformers.pipelines import pipeline
 import os, torch
 import sys, argparse
 import inspect
@@ -7,6 +9,7 @@ import inspect
 # from src.classes.agent import Agent
 import utils.metrics as metrics
 from utils.path_manager import PathManager
+from utils.test_phq9_llms import TestLLMs
 from classes.network import SocialDistanceAttachment
 import utils.load_personas as lp
 import utils.visualization as vis
@@ -290,22 +293,24 @@ def pca_visualize(all_networks_results, path, filename, args):
     # wrapper dealing with multiple networks per setting
 
     sbert = True
+    mentalbert = True
     shift = 10
-    num_steps = 100
+    num_steps = 30
     n_components = 2
 
     if sbert:
-        meanvar_embedding_per_setting, all_mats_per_setting = metrics.sbert_for_runs(all_networks_results, 
+        mean_embedding_per_setting, var_embedding_per_setting, all_mats_per_setting = metrics.sbert_for_runs(all_networks_results, 
                                                       num_steps=num_steps, 
-                                                      shift=shift)
+                                                      shift=shift, mentalbert=mentalbert)
     else:
-        meanvar_embedding_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(all_networks_results, 
+        mean_embedding_per_setting, all_mats_per_setting = metrics.tf_idf_for_runs(all_networks_results, 
                                                                                num_steps=num_steps, 
                                                                                shift=shift, 
                                                                                n_grams=n_grams)
     
-    mean_traj, pca = metrics.pca_on_means(meanvar_embedding_per_setting, n_components=n_components)
+    mean_traj, pca = metrics.pca_on_means(mean_embedding_per_setting, n_components=n_components)
     std_traj, _ = metrics.traj_variance_in_pca_space(all_mats_per_setting, pca)
+
     # vis.plot_tf_idf_PCA(mean_traj, std_traj, num_steps=100, shift=5, save= args.save)
     vis.plot_embedding_PCA_runs(mean_traj, std_traj, num_steps=num_steps, shift=shift, sbert=sbert,  save= args.save, path=path, filename=filename)
 
@@ -343,8 +348,20 @@ def main(args, pipe, states):
             })
     return all_networks_results
 
-if __name__ == "__main__":
+def test_llms(args):
 
+    well_being = lp.load_phq9("data/confidential/phq9.sav", args.num_agents, seed=args.seed)
+    personas = lp.load_personas_from_file("data/personas_10k.csv", args.num_agents, seed=args.seed)
+    tester = TestLLMs(well_being=well_being, num_agents=args.num_agents, seed=args.seed, personas=personas)
+    all_bias, bias_per_phq9, accuracy_per_phq9, all_accuracy = tester.run_simulation(tokenizer=tokenizer, pipe=get_pipe(), n_rounds=50, check_point=10)
+
+    vis.plot_bias(bias_per_phq9, all_bias)
+    vis.plot_accuracy(accuracy_per_phq9, all_accuracy)
+    
+    return all_accuracy, accuracy_per_phq9
+
+if __name__ == "__main__":
+    
     # Setup LLM pipeline
     pipe = get_pipe()
 
@@ -358,35 +375,44 @@ if __name__ == "__main__":
         states = ["enforce_ngrams"]
     else:
         states = ["basis"]
+    
+    testje = True
 
     #experiment
     # states = ["basis", "depressed", "enforce_ngrams"]
-    
-    # call main simulation
-    all_networks_results = main(args, pipe, states)
+    if testje: 
+        all_accuracy, accuracy_phq9 = test_llms(args)
+        print("Overall accuracy change: ", all_accuracy)
+        print("Accuracy change per PHQ-9 score: ", accuracy_phq9)
 
-    for i in range(len(args.seeds)):
-        network_data = all_networks_results[states[0]][i]
-        # analyze one of the networks
-        network = network_data["network"]
-        running_fracs = network_data["running_fracs"]
-        fracs_dist_step = network_data["fracs_dist_step"]
+    else:
+        # call main simulation
+
+        all_networks_results = main(args, pipe, states)
+
+        for i in range(len(args.seeds)):
+            network_data = all_networks_results[states[0]][i]
+            # analyze one of the networks
+            network = network_data["network"]
+            running_fracs = network_data["running_fracs"]
+            fracs_dist_step = network_data["fracs_dist_step"]
 
 
-        # generate path manager (for saving data and plots)
-        path_manager = PathManager(network=network)
 
-        # Get paths
-        data_path = path_manager.get_run_directory(is_plot=False)
-        plot_path = path_manager.get_run_directory(is_plot=True)
-        data_filename = path_manager.get_network_filename()
-        plot_filename = path_manager.get_plot_name()
+            # generate path manager (for saving data and plots)
+            path_manager = PathManager(network=network)
 
-        # Clean tweet histories
-        metrics.print_histories(network, file_dir = data_path, file_name = data_filename, save=args.save)
+            # Get paths
+            data_path = path_manager.get_run_directory(is_plot=False)
+            plot_path = path_manager.get_run_directory(is_plot=True)
+            data_filename = path_manager.get_network_filename()
+            plot_filename = path_manager.get_plot_name()
 
-        # Visualizations
-        call_visualizations(network, plot_path, plot_filename, args, running_fracs, fracs_dist_step)
+            # Clean tweet histories
+            metrics.print_histories(network, file_dir = data_path, file_name = data_filename, save=args.save)
+
+            # Visualizations
+            call_visualizations(network, plot_path, plot_filename, args, running_fracs, fracs_dist_step)
 
         #PCA
         all_networks_results1= {}

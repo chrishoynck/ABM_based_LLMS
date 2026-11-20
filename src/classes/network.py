@@ -4,7 +4,6 @@ from classes.agent import Agent
 from scipy.spatial.distance import cdist
 from powerlaw import Fit
 
-import bisect as bs_norm
 from scipy.optimize import bisect
 import utils.visualization as vis
 

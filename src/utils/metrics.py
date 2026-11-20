@@ -2,6 +2,7 @@ import re, csv, json, os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
 from sentence_transformers import SentenceTransformer as sbert
+from sentence_transformers import models
 import numpy as np
 
 
@@ -151,16 +152,28 @@ def analyze_distorted_language(network, ngrams_file: str, ngrams = None, n: int 
 
 #=========================SBERT functions=========================
 
-def generate_sbert_model(model_name="all-MiniLM-L6-v2"):
+def generate_sbert_model(model_name="all-MiniLM-L6-v2", mentalbert=False):
     """Generates and returns a SBERT model for embedding sentences.
     
     Args:
         model_name (str): Name of the pre-trained SBERT model to load.
+        mentalbert (bool): Whether to use a custom MentalBERT architecture.
+            (use "mental/mental-bert-base-uncased" as model_name in that case)
     
     Returns:
         SentenceTransformer: The loaded SBERT model.
     """
-    model = sbert(model_name)
+
+    if mentalbert:
+        word_embedding_model = models.Transformer("mental/mental-bert-base-uncased")
+        pooling_model = models.Pooling(word_embedding_model.get_word_embedding_dimension(),
+                                       pooling_mode_mean_tokens=True,
+                                       pooling_mode_cls_token=False,
+                                       pooling_mode_max_tokens=False)
+        
+        model = sbert(modules=[word_embedding_model, pooling_model])
+    else:
+        model = sbert(model_name)
     return model
 
 def create_embedding(model, texts):
@@ -174,20 +187,6 @@ def create_embedding(model, texts):
     """
     embeddings = model.encode(texts, convert_to_tensor=True)
     return embeddings
-
-# def sbert_embed_tweets(model, docs_per_network):
-#     '''Embed tweets using SBERT model.
-#     Args:
-#         model: SBERT model.
-#         docs_per_network (List(List(str))): List of documents (one per time window) per network.
-#     Returns:
-#         list of Tensors: Embedded documents per network.
-#     '''
-#     global_sbert = [create_embedding(model, [doc]) for doc in docs_per_network]
-    
-            
-#     return global_sbert
-
 
 
 def network_list_w_slices(networks_per_setting: dict):
@@ -220,10 +219,13 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
         num_steps: Size of the sliding window (number of tweets)
         shift: Stride of the sliding window
     Returns:
-        global_sbert_matrices: List of (Time, 384) arrays for each network
+        global_sbert_means: List of (Time, 384) arrays for each network
+        global_sbert_vars: List of (Time, 384) arrays for each network
     """
 
-    global_sbert_matrices = []
+    global_sbert_means = []
+    global_sbert_vars = []
+
     embedding_dim = model.get_sentence_embedding_dimension()
     
     print(f"Starting embedding for {len(all_networks)} networks...")
@@ -238,7 +240,8 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
         num_windows = max(1, (max_iters - num_steps) // shift + 1)
         
         # collect one trajectory per agent, then average them to get the "Network Trajectory"
-        net_window_vectors = [] 
+        mean_net_window_vectors = [] 
+        var_net_window_vectors = []
 
         for w in range(num_windows):
             start_t = w * shift
@@ -263,22 +266,28 @@ def mean_sbert_per_networks(model, all_networks, num_steps=30, shift=5):
                 # Handle empty window (rare, but possible if no one tweets)
                 # Use a zero vector as a placeholder
                 window_centroid = np.zeros(embedding_dim)
+                window_variance = np.zeros(embedding_dim)
+
             else:
                 # Embed all tweets in this window individually
                 embeddings = model.encode(tweets_in_window, batch_size=64, show_progress_bar=True)
                 
                 # Calculate the Mean Vector (Centroid) for this window
                 window_centroid = np.mean(embeddings, axis=0)
+                window_variance = np.var(embeddings, axis=0)
             
-            net_window_vectors.append(window_centroid)
+            mean_net_window_vectors.append(window_centroid)
+            var_net_window_vectors.append(window_variance)
         
         # Stack to create (Time, 384) matrix for this specific network run
-        global_sbert_matrices.append(np.stack(net_window_vectors))
+        global_sbert_means.append(np.stack(mean_net_window_vectors))
+        global_sbert_vars.append(np.stack(var_net_window_vectors))
 
-    return global_sbert_matrices
+
+    return global_sbert_means, global_sbert_vars
 
 
-def sbert_for_runs(networks_per_setting: dict, num_steps=30, shift=5):
+def sbert_for_runs(networks_per_setting: dict, num_steps=30, shift=5, mentalbert=True):
     """
     Computes SBERT embeddings using Mean Pooling over time windows.
     
@@ -296,42 +305,49 @@ def sbert_for_runs(networks_per_setting: dict, num_steps=30, shift=5):
     all_networks, setting_slices = network_list_w_slices(networks_per_setting)
 
     # Compute SBERT embeddings for all networks
-    model = generate_sbert_model()
-    global_sbert_matrices = mean_sbert_per_networks(model, all_networks, num_steps=num_steps, shift=shift)
+    model = generate_sbert_model(mentalbert=mentalbert)
+    global_sbert_means, global_sbert_vars = mean_sbert_per_networks(model, all_networks, num_steps=num_steps, shift=shift)
 
     # Group by setting and compute mean trajectories
     mean_sbert_per_setting = {}
+    var_sbert_per_setting = {}
+
     all_mats_per_setting = {}
     
     for setting, (start, end) in setting_slices.items():
-        matrices_over_runs = global_sbert_matrices[start:end]
+        matrices_over_runs = global_sbert_means[start:end]
+        matrices_vars_over_runs = global_sbert_vars[start:end]
         
         if not matrices_over_runs:
             continue
 
         # Trim to minimum length (in case some runs stopped early)
         min_len = min(m.shape[0] for m in matrices_over_runs)
-        cut_short = [m[:min_len] for m in matrices_over_runs]
+        cut_short_means = [m[:min_len] for m in matrices_over_runs]
+        cut_short_vars = [m[:min_len] for m in matrices_vars_over_runs]
         
         # Stack: (Num_Runs, time_window, Embedding_Dim)
-        embedding_per_setting = np.stack(cut_short, axis=0)
-        
+        embedding_per_setting = np.stack(cut_short_means, axis=0)
+        embedding_vars_per_setting = np.stack(cut_short_vars, axis=0)
+
         # Calculate Mean Trajectory over the runs
         mean_sbert_per_setting[setting] = np.mean(embedding_per_setting, axis=0)
+        var_sbert_per_setting[setting] = np.mean(embedding_vars_per_setting, axis=0)
         
         if setting not in all_mats_per_setting:
             all_mats_per_setting[setting] = []
-        all_mats_per_setting[setting].extend(cut_short)
 
-    return mean_sbert_per_setting, all_mats_per_setting
+        all_mats_per_setting[setting].extend(cut_short_means)
+
+    return mean_sbert_per_setting, var_sbert_per_setting, all_mats_per_setting
 
 
 #=========================TF-IDF functions=========================
 
-def retrieve_windowed_data(networks, num_steps= 30, shift=5, n_grams= None):
+def retrieve_windowed_data(networks_data, num_steps= 30, shift=5, n_grams= None):
     '''Retrieve TF-IDF data from the network's agents' tweet histories.
     Args:
-        networks: The network objects.
+        network_data: Tuple containing the network objects.
         num_steps (int): Number of steps used in TF-IDF retrieval.
         shift (int): Shift between windows.
     Returns:
@@ -341,7 +357,8 @@ def retrieve_windowed_data(networks, num_steps= 30, shift=5, n_grams= None):
     all_tweets_extracted = []
     docs_per_network = []
   
-    for i,  network in enumerate(networks):
+    for i,  network_data in enumerate(networks_data):
+        network = network_data["network"]
         # calculate number of windows
         num_windows = max(1, (network.iterations - num_steps) // shift + 1)
         window_list = [[] for _ in range(num_windows)]
@@ -406,6 +423,10 @@ def compute_tf_idf(all_tweets):
 
 def retrieve_tf_idf(networks, num_steps= 30, shift=5, n_grams= None):
     all_tweets_extracted, docs_per_network = retrieve_windowed_data(networks, num_steps=num_steps, shift=shift, n_grams=n_grams)
+
+    # test with n-grams added to vocab
+    print("using n-gram as vocab in TF-IDF: ")
+    all_tweets_extracted = n_grams
     vocab, vectorizer = compute_tf_idf(all_tweets_extracted)
 
     global_tf_idf = [vectorizer.transform(doc).toarray() for doc in docs_per_network]
@@ -421,9 +442,8 @@ def tf_idf_for_runs(networks_per_setting: dict, num_steps=30, shift=5, n_grams=N
         num_steps (int): Number of steps used in TF-IDF retrieval.
         shift (int): Shift between windows.
     Returns:
-        tf_idf_matrices (List(np.array)): List of TF-IDF matrices for each run.
-        vocab (np.array): Vocabulary array.
-        vectorizer: Fitted TfidfVectorizer object.
+        meanvar_tf_idf_per_setting: {setting: mean_tf_idf_matrix}
+        all_mats_per_setting: {setting: List of tf_idf_matrices}
     '''
     # flatten networks and get slices
     all_networks, setting_slices = network_list_w_slices(networks_per_setting)
@@ -431,7 +451,7 @@ def tf_idf_for_runs(networks_per_setting: dict, num_steps=30, shift=5, n_grams=N
     tf_idf_matrices, vocab, vectorizer = retrieve_tf_idf(
         all_networks, num_steps=num_steps, shift=shift, n_grams=n_grams)
     
-    meanvar_tf_idf_per_setting = {}
+    mean_tf_idf_per_setting = {}
     all_mats_per_setting = {}
     for setting, (start, end) in setting_slices.items():
 
@@ -447,12 +467,12 @@ def tf_idf_for_runs(networks_per_setting: dict, num_steps=30, shift=5, n_grams=N
         stacked_matrices = np.stack(trimmed_matrices, axis=0)
         mean_tf_idf = np.mean(stacked_matrices, axis=0)
 
-        meanvar_tf_idf_per_setting[setting] = mean_tf_idf
+        mean_tf_idf_per_setting[setting] = mean_tf_idf
         if setting not in all_mats_per_setting:
             all_mats_per_setting[setting] = []
         all_mats_per_setting[setting].extend(trimmed_matrices)
 
-    return meanvar_tf_idf_per_setting, all_mats_per_setting
+    return mean_tf_idf_per_setting, all_mats_per_setting
 
 
 #=========================PCA functions=========================

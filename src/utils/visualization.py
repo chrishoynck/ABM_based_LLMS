@@ -343,3 +343,56 @@ def plot_tweet_frequency(mean_freqs, var_freqs, window_size=5, file_path="", fil
         plt.savefig(f"{file_path}/tweet_freq_window{window_size}_{filename}.png", dpi=300)
     # plt.show()
     plt.close()
+
+#============= TESTING LLMS FOR PHQ-9 =============#
+def plot_bias(bias_per_phq9, all_bias, filename="plots/phq9_bias.png"):
+    """
+    Visualizes the mean bias per PHQ-9 score.
+    """
+    scores = sorted(bias_per_phq9.keys())
+    biases = [bias_per_phq9[s] for s in scores]
+    
+    # Color code: Red for overestimating, Blue for underestimating
+    colors = ['#ff6666' if b > 0 else '#6666ff' for b in biases]
+    
+    plt.figure(figsize=(10, 6))
+    plt.bar(scores, biases, color=colors, edgecolor='black', alpha=0.8)
+    
+    # Zero line represents perfect accuracy
+    plt.axhline(0, color='black', linestyle='-', linewidth=1.5)
+    
+    plt.xlabel('Ground Truth $PHQ-9$ Score')
+    plt.ylabel('Mean Bias')
+    plt.title(f'LLM Bias (total bias: {(all_bias)}) ')
+    plt.xticks(range(0, 28))
+    plt.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    # Annotations for clarity
+    plt.text(0.5, max(biases) if biases and max(biases) > 0 else 2, 
+             "Overestimating Depression ↑", color='red', fontsize=10, fontweight='bold')
+    plt.text(0.5, min(biases) if biases and min(biases) < 0 else -2, 
+             "Underestimating Depression ↓", color='blue', fontsize=10, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    print(f"Visualization saved to {filename}")
+
+def plot_accuracy(acc_per_phq9, all_accuracy, filename="plots/phq9_accuracy.png"):
+    """
+    Visualizes the mean accuracy per PHQ-9 score.
+    """
+    scores = sorted(acc_per_phq9.keys())
+    accuracies = [acc_per_phq9[s] for s in scores]
+    
+    plt.figure(figsize=(10, 6))
+    plt.bar(scores, accuracies, color = '#66b3ff', edgecolor='black', alpha=0.8)
+    
+    plt.xlabel('Ground Truth $PHQ-9$ Score')
+    plt.ylabel('Mean Absolute Error')
+    plt.title(f'LLM Accuracy per PHQ-9 Score (total accuracy: {(all_accuracy)})')
+    plt.xticks(range(0, 28))
+    plt.grid(axis='y', linestyle='--', alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    print(f"Visualization saved to {filename}")
